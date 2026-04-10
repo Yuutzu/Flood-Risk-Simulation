@@ -1,0 +1,94 @@
+========================================================================
+  JADE VALLEY SUBDIVISION — FLOOD RISK ASSESSMENT REPORT
+  Davao City, Philippines
+========================================================================
+  Generated : 2026-04-10 07:56:22
+  Method    : HAND (Height Above Nearest Drainage) Model
+  Sources   : GeoTIFF DEM + 2D/3D DXF topographic models
+
+------------------------------------------------------------------------
+1. STUDY AREA
+------------------------------------------------------------------------
+  Location   : Jade Valley Subdivision, Davao City, Philippines
+  Grid       : 57 rows × 61 cols
+  Cell size  : 30.6405 m
+  Total area : 326.44 ha
+  Elevation  : 2.00 – 71.75 m
+  Mean elev. : 20.74 m
+
+------------------------------------------------------------------------
+2. TERRAIN ANALYSIS
+------------------------------------------------------------------------
+  Mean slope : 4.3°
+  Max slope  : 37.9°
+  Flat (<5°) : 72.3%
+  Gentle     : 21.9%  (5–15°)
+  Steep (>15°): 5.8%
+
+------------------------------------------------------------------------
+3. FLOOD SCENARIOS
+------------------------------------------------------------------------
+  [5-Year Return Period]
+  HAND threshold : 1.0 m
+  Flooded area   : 51.64 ha  (15.8%)
+  Max depth      : 1.00 m
+  Mean depth     : 0.73 m
+
+  [10-Year Return Period]
+  HAND threshold : 2.0 m
+  Flooded area   : 70.04 ha  (21.5%)
+  Max depth      : 2.00 m
+  Mean depth     : 1.41 m
+
+  [25-Year Return Period]
+  HAND threshold : 3.5 m
+  Flooded area   : 90.03 ha  (27.6%)
+  Max depth      : 3.50 m
+  Mean depth     : 2.43 m
+
+  [100-Year Return Period]
+  HAND threshold : 6.0 m
+  Flooded area   : 115.76 ha  (35.5%)
+  Max depth      : 6.00 m
+  Mean depth     : 4.12 m
+
+------------------------------------------------------------------------
+4. RISK ZONE CLASSIFICATION
+------------------------------------------------------------------------
+  Very High Risk
+    26.66 ha  (8.2%)  — Prone to annual flooding
+
+  High Risk
+    31.83 ha  (9.7%)  — Frequent flood events
+
+  Medium Risk
+    32.30 ha  (9.9%)  — Occasional flooding
+
+  Low Risk
+    35.86 ha  (11.0%)  — Rare flood events
+
+  Safe Zone
+    174.81 ha  (53.6%)  — Minimal flood risk
+
+------------------------------------------------------------------------
+5. METHODOLOGY
+------------------------------------------------------------------------
+  The HAND model measures the vertical distance from each terrain
+  cell to the nearest drainage channel along the flow path. Lower
+  HAND values indicate higher flood susceptibility.
+
+  Steps executed:
+  1. NoData filling (nearest-neighbour)
+  2. Gaussian DEM smoothing (σ=0.5)
+  3. Sink filling — Priority Flood algorithm (Barnes et al. 2014)
+  4. D8 flow direction (steepest 8-neighbour descent)
+  5. Flow accumulation (topological sort)
+  6. Stream delineation (top 5% flow accumulation)
+  7. HAND computation (ascending elevation propagation)
+  8. Flood scenarios mapped to HAND thresholds
+  9. 5-class risk zonation
+
+  Reference: Nobre et al. (2011) — Journal of Hydrology 404:13–29
+========================================================================
+  END OF REPORT
+========================================================================
