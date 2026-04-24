@@ -63,20 +63,37 @@ PARAMS = {
 }
 
 # HAND thresholds for each flood return period (metres)
+# HAND thresholds based on terrain height above nearest drainage (metres).
+# Lower HAND = closer to stream = higher flood probability.
+# Calibrated to Jade Valley DEM: min elev 2m, mean 20.7m.
+#
+# Correspondence with PAGASA scenario rainfall (approximate):
+#   5-yr  (HAND≤1.0m) ≈ Heavy Rain      (90mm / 4hr)
+#   10-yr (HAND≤2.0m) ≈ Typhoon Sig 1  (150mm / 8hr)
+#   25-yr (HAND≤3.5m) ≈ Typhoon Sig 2  (250mm / 12hr)
+#   100-yr(HAND≤6.0m) ≈ Typhoon Sig 3  (400mm / 18hr)
 FLOOD_SCENARIOS = {
-    "5-Year Return"   : {"hand_thresh": 1.0, "color": "#FFFF00", "return_period":   5},
-    "10-Year Return"  : {"hand_thresh": 2.0, "color": "#FFA500", "return_period":  10},
-    "25-Year Return"  : {"hand_thresh": 3.5, "color": "#FF6600", "return_period":  25},
-    "100-Year Return" : {"hand_thresh": 6.0, "color": "#FF0000", "return_period": 100},
+    "5-Year Return"   : {"hand_thresh": 1.0, "color": "#FDD835", "return_period":   5},
+    "10-Year Return"  : {"hand_thresh": 2.0, "color": "#FB8C00", "return_period":  10},
+    "25-Year Return"  : {"hand_thresh": 3.5, "color": "#E53935", "return_period":  25},
+    "100-Year Return" : {"hand_thresh": 6.0, "color": "#6A1B9A", "return_period": 100},
 }
 
 # Risk zone classification by HAND (metres)
+# Risk zone descriptions aligned with PAGASA flood advisory language.
+# "Very High" corresponds to areas that flood even during Heavy Rain events.
+# "Safe Zone" corresponds to areas above the 100-yr flood level.
 RISK_CLASSES = {
-    "Very High Risk" : {"max_hand":  1.0, "color": "#D32F2F", "desc": "Prone to annual flooding"},
-    "High Risk"      : {"max_hand":  3.0, "color": "#F57C00", "desc": "Frequent flood events"},
-    "Medium Risk"    : {"max_hand":  6.0, "color": "#FBC02D", "desc": "Occasional flooding"},
-    "Low Risk"       : {"max_hand": 12.0, "color": "#388E3C", "desc": "Rare flood events"},
-    "Safe Zone"      : {"max_hand": 9999, "color": "#1565C0", "desc": "Minimal flood risk"},
+    "Very High Risk" : {"max_hand":  1.0, "color": "#B71C1C",
+                        "desc": "Floods in Heavy Rain (≥90mm). Mandatory evacuation during typhoons."},
+    "High Risk"      : {"max_hand":  3.0, "color": "#E64A19",
+                        "desc": "Floods in Typhoon Signal 1 (≥150mm). Pre-evacuation alert."},
+    "Medium Risk"    : {"max_hand":  6.0, "color": "#F9A825",
+                        "desc": "Floods in Typhoon Signal 2 (≥250mm). Monitor advisories."},
+    "Low Risk"       : {"max_hand": 12.0, "color": "#2E7D32",
+                        "desc": "Floods only in extreme events (Sig 3 / ≥400mm). Standby."},
+    "Safe Zone"      : {"max_hand": 9999, "color": "#1565C0",
+                        "desc": "Above 100-yr flood level. Suitable as evacuation destination."},
 }
 
 

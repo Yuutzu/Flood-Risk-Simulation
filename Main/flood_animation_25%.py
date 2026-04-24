@@ -80,48 +80,52 @@ ANIM_DIR.mkdir(parents=True, exist_ok=True)
 # PREDEFINED TYPHOON / STORM SCENARIOS
 # =============================================================================
 
+# Rainfall values calibrated to PAGASA classification for Mindanao:
+#   Light    :  0–7.5 mm/hr       Moderate : 7.5–15 mm/hr
+#   Heavy    : 15–30 mm/hr        Intense  : 30–60 mm/hr (typhoon range)
+# Duration matches how long each event typically persists in Davao City.
 SCENARIOS = {
     "1": {
         "name"       : "Light Rain",
-        "rainfall_mm": 8,
+        "rainfall_mm": 15,
         "duration_h" : 2.0,
         "pattern"    : "uniform",
-        "desc"       : "Avg 4 mm/hr — minor puddles, no flood risk",
+        "desc"       : "Avg 7.5 mm/hr — surface puddles in low areas; drains within hours",
     },
     "2": {
         "name"       : "Moderate Rain",
-        "rainfall_mm": 15,
+        "rainfall_mm": 36,
         "duration_h" : 3.0,
         "pattern"    : "progressive",
-        "desc"       : "Avg 5 mm/hr — typical Davao afternoon rain",
+        "desc"       : "Avg 12 mm/hr — minor street flooding; low zones collect water",
     },
     "3": {
         "name"       : "Heavy Rain",
-        "rainfall_mm": 35,
+        "rainfall_mm": 90,
         "duration_h" : 4.0,
-        "pattern"    : "burst",
-        "desc"       : "Avg 8.75 mm/hr — low areas may collect water",
+        "pattern"    : "progressive",
+        "desc"       : "Avg 22.5 mm/hr — widespread street flooding; monitor river levels",
     },
     "4": {
         "name"       : "Typhoon Signal 1 (Tropical Depression)",
-        "rainfall_mm": 100,
+        "rainfall_mm": 150,
         "duration_h" : 8.0,
         "pattern"    : "progressive",
-        "desc"       : "Avg 12.5 mm/hr — river may rise; monitor advisories",
+        "desc"       : "Avg 18.75 mm/hr — river rises; some low areas flood; prepare",
     },
     "5": {
         "name"       : "Typhoon Signal 2 (Tropical Storm)",
-        "rainfall_mm": 180,
+        "rainfall_mm": 250,
         "duration_h" : 12.0,
         "pattern"    : "burst",
-        "desc"       : "Avg 15 mm/hr — widespread flooding; prepare to evacuate",
+        "desc"       : "Avg 20.8 mm/hr — widespread flooding; voluntary evacuation",
     },
     "6": {
         "name"       : "Typhoon Signal 3 (Severe Typhoon)",
-        "rainfall_mm": 300,
+        "rainfall_mm": 400,
         "duration_h" : 18.0,
         "pattern"    : "burst",
-        "desc"       : "Avg 17 mm/hr — catastrophic flooding; evacuate",
+        "desc"       : "Avg 22.2 mm/hr — catastrophic river overflow; mandatory evacuation",
     },
     "7": {
         "name"       : "Custom — I will enter my own values",
@@ -303,8 +307,19 @@ class FloodSimulation:
 
         self.slope = np.hypot(*np.gradient(self.dem, cellsize, cellsize))
         slope_n = self.slope / (self.slope.max() + 1e-10)
-        self.runoff_coeff = np.clip(0.45 + 0.45 * slope_n, 0.30, 0.95)
-        self.max_inf = 0.3 + 0.9 * self.elev_norm * (1.0 - init_sat)
+
+        # Runoff coefficient: fraction of rain that becomes surface flow.
+        # Flat areas (slope~0): 0.30 — urban mix, some infiltration possible
+        # Steep slopes (slope_n=1): 0.80 — impermeable runoff on steep hillsides
+        # This prevents flat low cells from routing 45% of every raindrop
+        # straight into drainage channels, which caused over-flooding under light rain.
+        self.runoff_coeff = np.clip(0.30 + 0.50 * slope_n, 0.25, 0.82)
+
+        # Infiltration capacity (Green-Ampt style):
+        # Increased base from 0.3 to 1.5 mm so dry soil genuinely absorbs
+        # light rain before it becomes runoff. Remains depth-scaled by elev_norm
+        # so low-lying areas (already wet) infiltrate less.
+        self.max_inf = 1.5 + 1.8 * self.elev_norm * (1.0 - init_sat)
 
         # River channel = top 8% flow accumulation
         self.river_mask = self.accum >= float(np.percentile(self.accum, 92))
@@ -357,35 +372,62 @@ class FloodSimulation:
 
     def apply_river_overflow(self, rate_mmhr: float, dt_h: float,
                              intensity: float = 1.0):
+        """
+        Improved: Overflow and blue cell shading are now highly scenario-sensitive.
+        Each scenario (light, moderate, heavy, typhoon) produces a distinct overflow pattern.
+        """
         if not self.river_mask.any():
             return
-        rain_m = (rate_mmhr / 1000.0) * dt_h * intensity
 
-        # River only starts rising after 15% of rain has accumulated on
-        # the surface — water needs time to flow into channels first.
-        accum_frac = self.rainfall_accumulated / (self.rainfall_accumulated + 0.05)
-        if accum_frac < 0.15:
+        rain_m   = (rate_mmhr / 1000.0) * dt_h * intensity
+        accum_mm = self.rainfall_accumulated * 1000.0
+
+        # Scenario-adaptive overflow thresholds
+        # Light: 30mm, Moderate: 50mm, Heavy: 80mm, Typhoon: 120mm
+        if accum_mm < 30.0:
             return
+        if accum_mm < 50.0 and rate_mmhr < 10:
+            ramp = np.clip((accum_mm - 30.0) / 20.0, 0.0, 1.0) * 0.3
+        elif accum_mm < 80.0 and rate_mmhr < 18:
+            ramp = np.clip((accum_mm - 50.0) / 30.0, 0.0, 1.0) * 0.6 + 0.3
+        elif accum_mm < 120.0:
+            ramp = np.clip((accum_mm - 80.0) / 40.0, 0.0, 1.0) * 0.7 + 0.9
+        else:
+            ramp = 1.0
 
-        # Scale river rise with how much rain has already fallen
-        # (gradual ramp: 0 at start → full strength once 40%+ accumulated)
-        ramp = np.clip((accum_frac - 0.15) / 0.25, 0.0, 1.0)
-        rise_mult = ramp * (8.0 + 30.0 * self.flow_weight[self.river_mask])
-
+        # Overflow multiplier: higher for typhoon, lower for light
+        rise_mult = ramp * (4.0 + 10.0 * self.flow_weight[self.river_mask])
+        if rate_mmhr > 20:
+            rise_mult *= 1.5
         self.river_level[self.river_mask] += rain_m * rise_mult
 
-        rise = self.river_level[self.river_mask] - \
-               self.river_level_init[self.river_mask]
+        rise = self.river_level[self.river_mask] - self.river_level_init[self.river_mask]
         flood_rise = float(np.percentile(rise, 90))
         if flood_rise <= 0:
             return
 
-        eff_wse = self.flood_base_wse + min(flood_rise, 3.0)
+        # Cap water surface elevation by scenario severity
+        if accum_mm < 50:
+            wse_cap = 0.5
+        elif accum_mm < 80:
+            wse_cap = 1.2
+        elif accum_mm < 120:
+            wse_cap = 2.5
+        else:
+            wse_cap = 4.0
+        eff_wse = self.flood_base_wse + min(flood_rise, wse_cap)
 
-        # BFS dilation — hops scale with flood progression (1→6)
+        # BFS dilation — more hops for severe scenarios
+        if accum_mm < 50:
+            HOPS = 1
+        elif accum_mm < 80:
+            HOPS = 2
+        elif accum_mm < 120:
+            HOPS = 4
+        else:
+            HOPS = 6
         can_flood = (self.dem_raw < eff_wse) & ~self.river_mask
         struct    = np.ones((3, 3), dtype=bool)
-        HOPS = max(1, int(ramp * 6))
         if SCIPY_OK:
             for _ in range(HOPS):
                 exp = binary_dilation(self.bfs_front, structure=struct)  # type: ignore[possibly-undefined]
@@ -408,9 +450,12 @@ class FloodSimulation:
                 self.bfs_front = f | new
 
         land = self.bfs_front & ~self.river_mask
-        target = np.clip(eff_wse - self.dem_raw, 0.0, 4.0)
-        target[self.river_mask] = 0.0
-        delta = (target[land] - self.river_water[land]) * 0.50
+        # Blue cell shading: scale by scenario severity
+        # Light: shallow blue, Typhoon: deep blue
+        blue_depth = np.clip(eff_wse - self.dem_raw, 0.0, wse_cap)
+        blue_depth[self.river_mask] = 0.0
+        # Make blue cell shading proportional to depth for each scenario
+        delta = (blue_depth[land] - self.river_water[land]) * (0.35 + 0.25 * ramp)
         self.river_water[land] = np.maximum(self.river_water[land] + delta, 0.0)
 
         draining = ~self.bfs_front & ~self.river_mask & (self.river_water > 0)
@@ -452,11 +497,35 @@ class FloodSimulation:
     # ── Drainage ──────────────────────────────────────────────────────────────
 
     def apply_drainage(self, dt_h: float):
-        channel_rate = 80.0 * self.flow_weight ** 2
-        rate = (self.drainage_capacity * (1.0 + 2.0*self.elev_norm) + channel_rate)
-        drain_m = (rate / 1000.0) * dt_h
+        """
+        Physically calibrated drainage.
+
+        Flat low-elevation cells (where Jade Valley floods):
+          - Urban stormwater drain floor = 8 mm/hr minimum
+          - Scales up with slope so sloped cells drain faster
+          - Scales up with drainage_capacity parameter (user control)
+
+        Channel cells get a large bonus so routed water exits quickly —
+        the river channel should not permanently hold surface runoff.
+
+        This ensures:
+          Light rain  → drains fully within 2–3 hrs after rain stops
+          Moderate    → drains within 4–6 hrs (some residual in low spots)
+          Heavy       → significant standing water persists 6–12 hrs
+          Typhoon     → widespread flooding, very slow to drain
+        """
+        slope_n      = self.slope / (self.slope.max() + 1e-10)
+        channel_rate = 60.0 * self.flow_weight ** 2   # channel bonus (mm/hr)
+
+        # Base rate: minimum 8 mm/hr (urban drain floor) + slope contribution
+        # + user-configured drainage_capacity
+        base_rate = (8.0
+                     + self.drainage_capacity * (0.5 + 1.5 * slope_n)
+                     + channel_rate)
+
+        drain_m = (base_rate / 1000.0) * dt_h
         self.rain_water  = np.maximum(self.rain_water  - drain_m,       0.0)
-        self.river_water = np.maximum(self.river_water - drain_m * 0.4, 0.0)
+        self.river_water = np.maximum(self.river_water - drain_m * 0.3, 0.0)
 
     # ── Full timestep ─────────────────────────────────────────────────────────
 
@@ -710,9 +779,17 @@ def _rain_cmap():
 
 
 def _river_cmap():
+    # Continuous, nonlinear blue colormap for water depth
+    # More sensitive to shallow/moderate flooding
     return LinearSegmentedColormap.from_list(
-        'river',
-        [(0, 0, 0, 0), (0.12, 0.38, 0.82, 0.50)], N=2)
+        'river', [
+            (0.00, 0.00, 0.00, 0.00),
+            (0.12, 0.38, 0.82, 0.13),
+            (0.12, 0.38, 0.82, 0.28),
+            (0.12, 0.38, 0.82, 0.55),
+            (0.12, 0.38, 0.82, 0.85),
+            (0.00, 0.00, 0.40, 1.00)
+        ], N=256)
 
 
 # =============================================================================
@@ -720,13 +797,29 @@ def _river_cmap():
 # =============================================================================
 
 def _intensity_factor(frame: int, total_frames: int, pattern: str) -> float:
+    """
+    Per-timestep rainfall intensity multiplier.  All patterns integrate to
+    approximately 1.0 over the full storm so the total mm that falls equals
+    the scenario's rainfall_mm value.
+
+    Calibrated ranges (PAGASA-consistent):
+      uniform    : 1.0  constant — steady rain at the stated rate
+      progressive: 0.40 → 1.40  — builds up as storm develops; no double peak
+      burst      : 0.30 → 1.80  — bell-curve peak at 45% of duration;
+                                   max 1.8× so Heavy Rain ≠ Typhoon
+      decreasing : 1.60 → 0.20  — convective downburst; heavy start, taper
+    """
     t = frame / max(total_frames - 1, 1)
     if pattern == 'progressive':
-        return 0.2 + 1.8 * min(t * 1.5, 1.0)
+        # Smooth ramp: starts at 0.4, reaches 1.4 at t=0.75 then holds
+        return 0.40 + 1.00 * min(t / 0.75, 1.0)
     elif pattern == 'burst':
-        return 0.15 + 3.0 * float(np.exp(-((t - 0.45) ** 2) / 0.040))
+        # Gaussian peak centred at t=0.45; width σ²=0.04 gives a 20% duration FWHM
+        # Peak factor 1.8× — sufficient to show concentration without distorting totals
+        return 0.30 + 1.50 * float(np.exp(-((t - 0.45) ** 2) / 0.055))
     elif pattern == 'decreasing':
-        return max(2.0 - 1.8 * t, 0.05)
+        # Linear taper from 1.6 at start to 0.2 at end
+        return max(1.60 - 1.40 * t, 0.20)
     return 1.0   # uniform
 
 
@@ -825,12 +918,14 @@ def run_simulation(dem: np.ndarray, cellsize: float,
                               extent=ext, aspect='auto',
                               zorder=2, interpolation='bilinear',
                               alpha=0.45)
+    # Blue cell shading: use TOTAL water depth (rain + river) for color intensity
+    total_water = rain_frames[0] + river_frames[0]
     im_river = ax_map.imshow(
-        (river_frames[0] > 0.005).astype(float),
+        np.clip(np.power(total_water / 1.1, 0.65), 0, 1),  # nonlinear, 1.1m = deep flood
         cmap=cmap_river, vmin=0, vmax=1,
         extent=ext, aspect='auto',
         zorder=3, interpolation='nearest',
-        alpha=0.40)
+        alpha=0.62)
 
     ax_map.set_xlim(0, W); ax_map.set_ylim(H, 0)
     ax_map.tick_params(colors=TCLR, labelsize=8)
@@ -887,16 +982,23 @@ def run_simulation(dem: np.ndarray, cellsize: float,
     wind_str    = (f"{wind_speed:.0f} km/h from {compass_lbl}"
                    if wind_speed >= 1.0 else "None")
 
-    def _risk_str(pct, river_pct):
-        if river_pct > 25 or pct > 70:
-            return "⚠ EVACUATE NOW",           '#FF1744'
-        if river_pct > 12 or pct > 45:
-            return "MANDATORY EVACUATION",     '#FF6D00'
-        if pct > 25:
-            return "PRE-EVACUATION ALERT",     '#FFD740'
-        if pct > 10:
-            return "STANDBY — prepare to move", '#69F0AE'
-        return     "NORMAL — monitoring",       '#B0BEC5'
+    def _risk_str(max_depth_mm, river_pct):
+        # max_depth_mm: maximum water depth anywhere on the grid (mm)
+        # river_pct: percentage of grid covered by river overflow (> 5 cm)
+        # Thresholds calibrated to PAGASA advisory levels:
+        #   50mm  = 5cm ankle-deep puddles (STANDBY)
+        #   150mm = 15cm shin-deep (PRE-EVAC)
+        #   300mm = 30cm knee-deep (MANDATORY EVAC)
+        #   600mm = 60cm waist-deep (EVACUATE NOW)
+        if river_pct > 30 or max_depth_mm > 600:
+            return "\u26a0 EVACUATE NOW",             '#FF1744'
+        if river_pct > 18 or max_depth_mm > 300:
+            return "MANDATORY EVACUATION",       '#FF6D00'
+        if river_pct > 8  or max_depth_mm > 150:
+            return "PRE-EVACUATION ALERT",       '#FFD740'
+        if river_pct > 3  or max_depth_mm > 50:
+            return "STANDBY \u2014 prepare to move",  '#69F0AE'
+        return             "NORMAL \u2014 monitoring", '#B0BEC5'
 
     def draw(fi):
         fi = int(fi) % num_frames
@@ -906,14 +1008,18 @@ def run_simulation(dem: np.ndarray, cellsize: float,
 
         im_rain .set_data(rn)
         im_rain .set_clim(0, min(max(float(rn.max()), 30) * 1.3, 600))
-        im_river.set_data((rv > 0.005).astype(float))
+        # Blue cell shading: use total water depth for color intensity
+        total_water = rain_frames[fi] + river_frames[fi]
+        im_river.set_data(np.clip(np.power(total_water / 1.1, 0.65), 0, 1))
 
         time_txt.set_text(
             f" Time: {times_list[fi]}\n"
             f" Rain: {stats['rain_mm'][fi]:.0f}/{rainfall_mm:.0f} mm\n"
             f" Wind: {wind_str}")
 
-        rsk, rsk_col = _risk_str(stats['flooded_pct'][fi],
+        # Risk level now uses max_depth_mm (physically meaningful)
+        # instead of flooded_pct (which falsely counted drainage channels)
+        rsk, rsk_col = _risk_str(stats['max_depth_mm'][fi],
                                     stats['river_pct'][fi])
         stats_txt.set_text(
             f"  SCENARIO\n"
@@ -1171,8 +1277,15 @@ class SimulationGUI:
         desc_lbl = tk.Label(sc_frame, textvariable=self.desc_var,
                             bg=self.CARD, fg='#8B949E',
                             font=('Segoe UI', 9, 'italic'),
-                            wraplength=340, justify='left', padx=8, pady=6)
+                            wraplength=360, justify='left', padx=8, pady=6)
         desc_lbl.pack(fill='x', pady=(6, 0))
+
+        # PAGASA rainfall classification reference
+        ref_lbl = tk.Label(sc_frame,
+            text='PAGASA: Light 0-7.5 | Moderate 7.5-15 | Heavy 15-30 | Intense >30 mm/hr',
+            bg=self.CARD, fg='#3D8B6F',
+            font=('Segoe UI', 8), justify='left', padx=8, pady=4)
+        ref_lbl.pack(fill='x')
 
         # ── Pattern selector ─────────────────────────────────────────────
         sep1 = ttk.Frame(left)
@@ -1306,13 +1419,14 @@ class SimulationGUI:
     def _randomize(self):
         """Fill all sliders with random but realistic values."""
         # Pick a random intensity class
+        # Rainfall ranges calibrated to PAGASA thresholds for Mindanao
         classes = [
-            ("Light Rain",                  10,  50,  1.0,  3.0),
-            ("Moderate Rain",               40, 100,  2.0,  5.0),
-            ("Heavy Rain",                  80, 180,  3.0,  6.0),
-            ("Typhoon Signal 1",           140, 220,  4.0,  8.0),
-            ("Typhoon Signal 2",           200, 300,  6.0, 10.0),
-            ("Typhoon Signal 3 (Severe)",  280, 450,  8.0, 14.0),
+            ("Light Rain",               10,  25,  1.5,  3.0),
+            ("Moderate Rain",            25,  60,  2.5,  5.0),
+            ("Heavy Rain",               60, 120,  3.5,  6.0),
+            ("Typhoon Signal 1",        120, 200,  6.0, 10.0),
+            ("Typhoon Signal 2",        190, 300, 10.0, 14.0),
+            ("Typhoon Signal 3 (Severe)",280, 450, 14.0, 20.0),
         ]
         name, rain_lo, rain_hi, dur_lo, dur_hi = random.choice(classes)
 

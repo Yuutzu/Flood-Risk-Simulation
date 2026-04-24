@@ -18,7 +18,7 @@
   },
   "params": {
     "location": "Jade Valley Subdivision, Davao City, Philippines",
-    "analysis_date": "2026-04-10",
+    "analysis_date": "2026-04-24",
     "stream_threshold_pct": 95,
     "smooth_sigma": 0.5,
     "curve_number": 85
@@ -39,7 +39,7 @@
       "mean_depth_m": 0.7326856037931794,
       "hand_threshold": 1.0,
       "return_period": 5,
-      "color": "#FFFF00"
+      "color": "#FDD835"
     },
     "10-Year Return": {
       "flooded_cells": 746,
@@ -49,7 +49,7 @@
       "mean_depth_m": 1.4129728680180207,
       "hand_threshold": 2.0,
       "return_period": 10,
-      "color": "#FFA500"
+      "color": "#FB8C00"
     },
     "25-Year Return": {
       "flooded_cells": 959,
@@ -59,7 +59,7 @@
       "mean_depth_m": 2.4295655703276617,
       "hand_threshold": 3.5,
       "return_period": 25,
-      "color": "#FF6600"
+      "color": "#E53935"
     },
     "100-Year Return": {
       "flooded_cells": 1233,
@@ -69,39 +69,39 @@
       "mean_depth_m": 4.123037899052601,
       "hand_threshold": 6.0,
       "return_period": 100,
-      "color": "#FF0000"
+      "color": "#6A1B9A"
     }
   },
   "risk_zones": {
     "Very High Risk": {
       "area_ha": 26.6630628231,
       "percentage": 8.16796088582111,
-      "color": "#D32F2F",
-      "desc": "Prone to annual flooding"
+      "color": "#B71C1C",
+      "desc": "Floods in Heavy Rain (≥90mm). Mandatory evacuation during typhoons."
     },
     "High Risk": {
       "area_ha": 31.826684144475,
       "percentage": 9.749784296807592,
-      "color": "#F57C00",
-      "desc": "Frequent flood events"
+      "color": "#E64A19",
+      "desc": "Floods in Typhoon Signal 1 (≥150mm). Pre-evacuation alert."
     },
     "Medium Risk": {
       "area_ha": 32.2961042646,
       "percentage": 9.893586425079091,
-      "color": "#FBC02D",
-      "desc": "Occasional flooding"
+      "color": "#F9A825",
+      "desc": "Floods in Typhoon Signal 2 (≥250mm). Monitor advisories."
     },
     "Low Risk": {
       "area_ha": 35.86369717755,
       "percentage": 10.986482599942478,
-      "color": "#388E3C",
-      "desc": "Rare flood events"
+      "color": "#2E7D32",
+      "desc": "Floods only in extreme events (Sig 3 / ≥400mm). Standby."
     },
     "Safe Zone": {
       "area_ha": 174.81205273455,
       "percentage": 53.551912568306015,
       "color": "#1565C0",
-      "desc": "Minimal flood risk"
+      "desc": "Above 100-yr flood level. Suitable as evacuation destination."
     }
   }
 }

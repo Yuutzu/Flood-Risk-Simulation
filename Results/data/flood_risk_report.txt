@@ -2,7 +2,7 @@
   JADE VALLEY SUBDIVISION — FLOOD RISK ASSESSMENT REPORT
   Davao City, Philippines
 ========================================================================
-  Generated : 2026-04-10 07:56:22
+  Generated : 2026-04-24 08:06:44
   Method    : HAND (Height Above Nearest Drainage) Model
   Sources   : GeoTIFF DEM + 2D/3D DXF topographic models
 
@@ -56,19 +56,19 @@
 4. RISK ZONE CLASSIFICATION
 ------------------------------------------------------------------------
   Very High Risk
-    26.66 ha  (8.2%)  — Prone to annual flooding
+    26.66 ha  (8.2%)  — Floods in Heavy Rain (≥90mm). Mandatory evacuation during typhoons.
 
   High Risk
-    31.83 ha  (9.7%)  — Frequent flood events
+    31.83 ha  (9.7%)  — Floods in Typhoon Signal 1 (≥150mm). Pre-evacuation alert.
 
   Medium Risk
-    32.30 ha  (9.9%)  — Occasional flooding
+    32.30 ha  (9.9%)  — Floods in Typhoon Signal 2 (≥250mm). Monitor advisories.
 
   Low Risk
-    35.86 ha  (11.0%)  — Rare flood events
+    35.86 ha  (11.0%)  — Floods only in extreme events (Sig 3 / ≥400mm). Standby.
 
   Safe Zone
-    174.81 ha  (53.6%)  — Minimal flood risk
+    174.81 ha  (53.6%)  — Above 100-yr flood level. Suitable as evacuation destination.
 
 ------------------------------------------------------------------------
 5. METHODOLOGY
