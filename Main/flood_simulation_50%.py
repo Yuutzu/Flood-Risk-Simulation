@@ -1,3 +1,33 @@
+"""
+=============================================================================
+ JADE VALLEY SUBDIVISION — FLOOD SIMULATION WITH PREVENTION MEASURES  (50%)
+ Davao City, Philippines
+=============================================================================
+ This is the 50% milestone build — an extension of flood_animation.py (25%).
+
+ What's new in 50%:
+   • Prevention Measures Panel in the GUI (separate tab, usable alongside
+     any storm scenario)
+   • Prevention Measure 1 — Riverbank Floodwall  (+1.5 m along west bank)
+   • Prevention Measure 2 — Drainage Canal Network  (east outlet + south branch)
+   • Both measures modify the DEM before the simulation runs, so the flood
+     physics itself responds realistically — water is blocked / rerouted.
+   • The animation shows three layers simultaneously:
+       Layer 1  — JPEG map background (aligned to DEM grid)
+       Layer 2  — River channel band (always-visible sky-blue)
+       Layer 3  — Rain accumulation (green → yellow → red, low opacity)
+       Layer 4  — River overflow spread (blue wash, low opacity)
+       Layer 5  — Prevention infrastructure drawn as coloured overlays:
+                    floodwall = red hatched line along west bank
+                    drainage canals = bright cyan corridors
+   • Stats panel shows both flood numbers AND which measures are active
+   • A third prevention-only result panel appears after the animation ends
+     showing the difference map: baseline depth minus improved depth.
+
+ Run:  python Main/flood_animation_50.py
+=============================================================================
+"""
+
 import heapq
 import io
 import os
@@ -19,7 +49,7 @@ from tkinter import ttk
 
 warnings.filterwarnings("ignore")
 
-## Optional libraries
+# ── Optional libraries ────────────────────────────────────────────────────────
 try:
     import rasterio
     RASTERIO_OK = True
@@ -44,7 +74,9 @@ try:
 except ImportError:
     EZDXF_OK = False
 
-## Paths (same as flood_animation.py)
+# =============================================================================
+# PATHS  (same layout as flood_animation.py)
+# =============================================================================
 
 BASE_DIR  = Path(__file__).resolve().parent.parent
 DATA_DIR  = BASE_DIR / "Map Topography"
@@ -57,50 +89,54 @@ MAPS_DIR  = BASE_DIR / "Results" / "maps"
 for _d in (ANIM_DIR, DATA_OUT, MAPS_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 
-## Storm scenarios (standardized values)
+# =============================================================================
+# STORM SCENARIOS  (identical to 25% — drop-in compatible)
+# =============================================================================
+
 SCENARIOS = {
     "1": {"name": "Light Rain",
-        "rainfall_mm": 15,  "duration_h": 2.0,  "pattern": "uniform",
-        "desc": "Avg 7.5 mm/hr, minor puddles, drains quickly"},
-    "2": {"name": "Moderate Rain",
-        "rainfall_mm": 36, "duration_h": 3.0,  "pattern": "progressive",
-        "desc": "Avg 12 mm/hr, minor street flooding, low zones collect water"},
+          "rainfall_mm": 8,  "duration_h": 2.0,  "pattern": "uniform",
+          "desc": "Avg 4 mm/hr — minor puddles, no flood risk"},
+        "2": {"name": "Moderate Rain",
+            "rainfall_mm": 36, "duration_h": 3.0,  "pattern": "progressive",
+            "desc": "Avg 12 mm/hr — minor street flooding; low zones collect water"},
     "3": {"name": "Heavy Rain",
-        "rainfall_mm": 90, "duration_h": 4.0,  "pattern": "progressive",
-        "desc": "Avg 22.5 mm/hr, widespread street flooding, monitor river"},
+          "rainfall_mm": 35, "duration_h": 4.0,  "pattern": "burst",
+          "desc": "Avg 8.75 mm/hr — low areas may collect water"},
     "4": {"name": "Typhoon Signal 1 (Tropical Depression)",
-        "rainfall_mm": 150, "duration_h": 8.0, "pattern": "progressive",
-        "desc": "Avg 18.75 mm/hr, river rises, some low areas flood"},
+          "rainfall_mm": 100, "duration_h": 8.0, "pattern": "progressive",
+          "desc": "Avg 12.5 mm/hr — river may rise; monitor advisories"},
     "5": {"name": "Typhoon Signal 2 (Tropical Storm)",
-        "rainfall_mm": 250, "duration_h": 12.0, "pattern": "burst",
-        "desc": "Avg 20.8 mm/hr, widespread flooding, voluntary evacuation"},
+          "rainfall_mm": 180, "duration_h": 12.0, "pattern": "burst",
+          "desc": "Avg 15 mm/hr — widespread flooding; prepare to evacuate"},
     "6": {"name": "Typhoon Signal 3 (Severe Typhoon)",
-        "rainfall_mm": 400, "duration_h": 18.0, "pattern": "burst",
-        "desc": "Avg 22.2 mm/hr, catastrophic river overflow, mandatory evacuation"},
-    "7": {"name": "Custom (manual input)",
-        "rainfall_mm": None, "duration_h": None, "pattern": None, "desc": ""},
+          "rainfall_mm": 300, "duration_h": 18.0, "pattern": "burst",
+          "desc": "Avg 17 mm/hr — catastrophic flooding; evacuate"},
+    "7": {"name": "Custom — I will enter my own values",
+          "rainfall_mm": None, "duration_h": None, "pattern": None, "desc": ""},
 }
 
-## DEM loading
+# =============================================================================
+# DEM LOADING  (identical to 25%)
+# =============================================================================
+
 def load_dem() -> tuple:
-    """Load JVS_Simulation.tif. Returns (dem_array, cellsize_m)."""
+    """Load JVS_Simulation.tif.  Returns (dem_array, cellsize_m)."""
     if not TIF_FILE.exists():
-        raise FileNotFoundError(f"DEM file not found: {TIF_FILE}")
-    try:
-        import rasterio
-    except ImportError:
-        raise ImportError("rasterio required. Install with: pip install rasterio")
-    print(f"Loading DEM: {TIF_FILE.name}")
-    with rasterio.open(str(TIF_FILE)) as src:
-        dem = src.read(1).astype(np.float64)
+        sys.exit(f"\n[ERROR] DEM file not found:\n  {TIF_FILE}")
+    if not RASTERIO_OK:
+        sys.exit("\n[ERROR] rasterio required.  Run:  pip install rasterio")
+    print(f"  Loading DEM: {TIF_FILE.name}")
+    with rasterio.open(str(TIF_FILE)) as src:           # type: ignore
+        dem    = src.read(1).astype(np.float64)
         nodata = src.nodata if src.nodata is not None else -9999.0
         dem[dem == nodata] = np.nan
-        t = src.transform
-        csx = abs(float(t.a))
-        crs = src.crs
+        t      = src.transform
+        csx    = abs(float(t.a))
+        crs    = src.crs
         if crs and crs.is_geographic:
             lat = float(src.bounds.bottom + (src.bounds.top - src.bounds.bottom) / 2)
-            cs = csx * 111320 * abs(np.cos(np.radians(lat)))
+            cs  = csx * 111320 * abs(np.cos(np.radians(lat)))
         else:
             cs = csx
     nan_mask = np.isnan(dem)
@@ -113,15 +149,19 @@ def load_dem() -> tuple:
             dem[nan_mask] = float(np.nanmean(dem))
     elif nan_mask.any():
         dem[nan_mask] = float(np.nanmean(dem))
-    print(f"Grid: {dem.shape[0]}x{dem.shape[1]}, Cell: {cs:.1f} m, Elev: {dem.min():.1f}-{dem.max():.1f} m")
+    print(f"  Grid : {dem.shape[0]}×{dem.shape[1]}  |  Cell: {cs:.1f} m  |  "
+          f"Elev: {dem.min():.1f}–{dem.max():.1f} m")
     return dem, round(cs, 2)
 
-## Hydrological helpers
+# =============================================================================
+# HYDROLOGICAL HELPERS  (identical to 25%)
+# =============================================================================
+
 def _fill_depressions(dem: np.ndarray) -> np.ndarray:
     rows, cols = dem.shape
-    filled = dem.copy()
+    filled  = dem.copy()
     visited = np.zeros((rows, cols), dtype=bool)
-    heap = []
+    heap: list = []
     for r in range(rows):
         for c in (0, cols - 1):
             if not visited[r, c]:
@@ -139,15 +179,16 @@ def _fill_depressions(dem: np.ndarray) -> np.ndarray:
             nr, nc = r + dr, c + dc
             if 0 <= nr < rows and 0 <= nc < cols and not visited[nr, nc]:
                 visited[nr, nc] = True
-                filled[nr, nc] = max(dem[nr, nc], elev)
+                filled[nr, nc]  = max(dem[nr, nc], elev)
                 heapq.heappush(heap, (filled[nr, nc], nr, nc))
     return filled
+
 
 def _d8_flow_direction(dem, cell_w, cell_h):
     rows, cols = dem.shape
     diag = float(np.sqrt(cell_w**2 + cell_h**2))
-    d8 = [(-1,-1,diag),(-1,0,cell_h),(-1,1,diag),(0,-1,cell_w),(0,1,cell_w),
-          (1,-1,diag),(1,0,cell_h),(1,1,diag)]
+    d8   = [(-1,-1,diag),(-1,0,cell_h),(-1,1,diag),(0,-1,cell_w),(0,1,cell_w),
+            (1,-1,diag),(1,0,cell_h),(1,1,diag)]
     fdir = np.zeros((rows, cols), dtype=np.int8)
     for fi in np.argsort(-dem.ravel()):
         r, c = divmod(int(fi), cols)
@@ -161,10 +202,11 @@ def _d8_flow_direction(dem, cell_w, cell_h):
         fdir[r, c] = bd
     return fdir
 
+
 def _flow_accumulation(fdir, dem):
     rows, cols = dem.shape
     accum = np.ones((rows, cols), dtype=np.float32)
-    d8 = [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]
+    d8    = [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]
     for fi in np.argsort(dem.ravel())[::-1]:
         r, c = divmod(int(fi), cols)
         dr, dc = d8[int(fdir[r, c])]
@@ -173,13 +215,38 @@ def _flow_accumulation(fdir, dem):
             accum[nr, nc] += accum[r, c]
     return accum
 
+
 def build_stream_mask(accum, pct=92.0):
     return accum >= float(np.percentile(accum, pct))
 
-## Prevention measures (new in 50%)
+# =============================================================================
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  PREVENTION MEASURES  ← NEW in 50%                                     ║
+# ║                                                                          ║
+# ║  Two functions that return a MODIFIED DEM.  The simulation physics       ║
+# ║  then runs on this modified DEM so water genuinely responds to the       ║
+# ║  infrastructure — it is blocked by the wall, or drains faster through   ║
+# ║  the canal — not just drawn on top as decoration.                        ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+# =============================================================================
+
 def apply_floodwall(dem: np.ndarray, cellsize: float,
                     wall_height_m: float = 1.5) -> tuple[np.ndarray, np.ndarray]:
-    # Raise elevation of western river bank cells by wall_height_m
+    """
+    Prevention Measure 1 — Riverbank Floodwall
+    ────────────────────────────────────────────
+    Raises the elevation of cells that form the western river bank by
+    wall_height_m.  This creates a physical barrier in the DEM: the flood
+    routing engine cannot spill water over the bank until the river level
+    exceeds the raised crest.
+
+    Target cells:  Any cell with Z ≤ 6 m that lies within ~3 cell-widths
+    of the river channel (top-8% flow accumulation cells).  This matches
+    the geometry visible in the JVS terrain — the Davao River bank is the
+    lowest-elevation strip on the western edge of the study area.
+
+    Returns a copy of the DEM with the wall cells raised.
+    """
     modified = dem.copy()
     rows, cols = dem.shape
 
@@ -683,77 +750,51 @@ def _intensity_factor(frame, total_frames, pattern):
 # ╚══════════════════════════════════════════════════════════════════════════╝
 # =============================================================================
 
-def run_simulation(
-    dem: np.ndarray,
-    cellsize: float,
-    rainfall_mm: float,
-    duration_h: float,
-    timestep_min: int,
-    start_time_str: str,
-    wind_speed: float,
-    wind_dir: float,
-    soil_sat_pct: float,
-    drain_cap: float,
-    pattern: str,
-    scenario_name: str,
-    use_floodwall: bool = False,
-    use_canal: bool = False,
-    wall_height: float = 1.5,
-    canal_depth: float = 2.0
-):
+def run_simulation(dem: np.ndarray, cellsize: float,
+                   rainfall_mm: float, duration_h: float,
+                   timestep_min: int, start_time_str: str,
+                   wind_speed: float, wind_dir: float,
+                   soil_sat_pct: float, drain_cap: float,
+                   pattern: str, scenario_name: str,
+                   use_floodwall: bool = False,
+                   use_canal: bool = False,
+                   wall_height: float = 1.5,
+                   canal_depth: float = 2.0):
+
     any_prevention = use_floodwall or use_canal
 
-    # Always run both baseline (no prevention) and improved (with prevention) for every scenario
+    # ── Apply prevention measures to DEM ─────────────────────────────────────
+    # Always keep a pristine copy of the DEM for baseline
     dem_orig = dem.copy()
+    if any_prevention:
+        print("\n  Applying prevention measures to DEM…")
+        sim_dem, wall_mask, canal_mask = apply_prevention_measures(
+            dem_orig, cellsize, use_floodwall, use_canal, wall_height, canal_depth)
+        prevention_label = []
+        if use_floodwall:
+            prevention_label.append(f"Floodwall +{wall_height:.1f}m")
+        if use_canal:
+            prevention_label.append("Drainage Canal")
+        prevention_str = " + ".join(prevention_label)
+    else:
+        sim_dem     = dem_orig.copy()
+        wall_mask   = np.zeros(dem_orig.shape, dtype=bool)
+        canal_mask  = np.zeros(dem_orig.shape, dtype=bool)
+        prevention_str = "None (Baseline)"
+
     rate_mmhr  = rainfall_mm / duration_h
     dt_h       = timestep_min / 60.0
     num_frames = int(np.ceil(duration_h / dt_h))
-    wmap = wind_rainfall_map(dem, wind_speed, wind_dir)
 
-    # --- Run BASELINE simulation (no prevention) ---
     print(f"\n  Scenario    : {scenario_name}")
     print(f"  Rainfall    : {rainfall_mm:.0f} mm in {duration_h:.1f} h  ({rate_mmhr:.1f} mm/hr)")
     print(f"  Timestep    : {timestep_min} min  →  {num_frames} frames")
-    print(f"  Prevention  : None (Baseline)")
-    sim_base = FloodSimulation(dem_orig, cellsize,
-                               soil_saturation_pct=soil_sat_pct,
-                               drainage_capacity_mmhr=drain_cap)
-    base_rain_frames  = []
-    base_river_frames = []
-    base_times_list   = []
-    base_stats = {"rain_mm": [], "flooded_pct": [], "river_pct": [],
-                  "max_depth_mm": [], "max_river_mm": []}
-    sh, sm = map(int, start_time_str.split(':'))
-    cur = datetime.now().replace(hour=sh, minute=sm, second=0)
-    for fr in range(num_frames):
-        inten = _intensity_factor(fr, num_frames, pattern)
-        sim_base.step(rate_mmhr, dt_h, intensity=inten, wind_map=wmap)
-        base_rain_frames .append(sim_base.rain_water .copy())
-        base_river_frames.append(sim_base.river_water.copy())
-        base_times_list  .append(cur.strftime("%H:%M"))
-        total = sim_base.rain_water + sim_base.river_water
-        base_stats["rain_mm"]     .append(float(sim_base.rainfall_accumulated * 1000))
-        base_stats["flooded_pct"] .append(float(np.sum(total > 0.01) / total.size * 100))
-        base_stats["river_pct"]   .append(float(np.sum(sim_base.river_water > 0.005) / total.size * 100))
-        base_stats["max_depth_mm"].append(float(total.max() * 1000))
-        base_stats["max_river_mm"].append(float(sim_base.river_water.max() * 1000))
-        if (fr + 1) % max(1, num_frames // 8) == 0 or fr == 0:
-            print(f"    [BASE {fr+1:3d}/{num_frames}]  {base_times_list[-1]}  "
-                  f"rain={base_stats['rain_mm'][-1]:.0f} mm  "
-                  f"flooded={base_stats['flooded_pct'][-1]:.1f}%")
-        cur += timedelta(minutes=timestep_min)
-    baseline_last_depth  = (sim_base.rain_water + sim_base.river_water).copy()
-
-    # --- Run IMPROVED simulation (with prevention) ---
-    sim_dem, wall_mask, canal_mask = apply_prevention_measures(
-        dem_orig, cellsize, use_floodwall, use_canal, wall_height, canal_depth)
-    prevention_label = []
-    if use_floodwall:
-        prevention_label.append(f"Floodwall +{wall_height:.1f}m")
-    if use_canal:
-        prevention_label.append("Drainage Canal")
-    prevention_str = " + ".join(prevention_label) if prevention_label else "None (Baseline)"
     print(f"  Prevention  : {prevention_str}")
+
+    wmap = wind_rainfall_map(dem, wind_speed, wind_dir)
+
+    # ── Run IMPROVED simulation (on modified DEM) ─────────────────────────----
+    print("\n  Running improved simulation…")
     sim = FloodSimulation(sim_dem, cellsize,
                           soil_saturation_pct=soil_sat_pct,
                           drainage_capacity_mmhr=drain_cap,
@@ -764,6 +805,8 @@ def run_simulation(
     times_list   = []
     stats = {"rain_mm": [], "flooded_pct": [], "river_pct": [],
              "max_depth_mm": [], "max_river_mm": []}
+
+    sh, sm = map(int, start_time_str.split(':'))
     cur = datetime.now().replace(hour=sh, minute=sm, second=0)
     for fr in range(num_frames):
         inten = _intensity_factor(fr, num_frames, pattern)
@@ -778,39 +821,29 @@ def run_simulation(
         stats["max_depth_mm"].append(float(total.max() * 1000))
         stats["max_river_mm"].append(float(sim.river_water.max() * 1000))
         if (fr + 1) % max(1, num_frames // 8) == 0 or fr == 0:
-            print(f"    [IMPROVED {fr+1:3d}/{num_frames}]  {times_list[-1]}  "
+            print(f"    [{fr+1:3d}/{num_frames}]  {times_list[-1]}  "
                   f"rain={stats['rain_mm'][-1]:.0f} mm  "
                   f"flooded={stats['flooded_pct'][-1]:.1f}%")
         cur += timedelta(minutes=timestep_min)
 
-    # --- Save outputs for both runs ---
-    scenario_safe = scenario_name.replace(' ', '_').replace('/', '-').replace('(', '').replace(')', '')
-    base_tag = "BASELINE"
-    improved_tag = "WITH_PREVENTION" if prevention_label else "NO_PREVENTION"
-    # Save stats as CSV for both runs
-    import csv
-    base_csv = str(DATA_OUT / f"sim_{scenario_safe}_{base_tag}.csv")
-    improved_csv = str(DATA_OUT / f"sim_{scenario_safe}_{improved_tag}.csv")
-    def save_csv(path, times, stats):
-        fields = ["time", "rain_mm", "flooded_pct", "river_pct", "max_depth_mm", "max_river_mm"]
-        with open(path, "w", newline="") as f:
-            w = csv.writer(f)
-            w.writerow(fields)
-            for i in range(len(times)):
-                w.writerow([
-                    times[i],
-                    stats["rain_mm"][i],
-                    stats["flooded_pct"][i],
-                    stats["river_pct"][i],
-                    stats["max_depth_mm"][i],
-                    stats["max_river_mm"][i],
-                ])
-    save_csv(base_csv, base_times_list, base_stats)
-    save_csv(improved_csv, times_list, stats)
-    print(f"\n  Saved outputs:")
-    print(f"    Baseline:  {base_csv}")
-    print(f"    Improved:  {improved_csv}")
-    # any_prevention is now defined above and can be used for UI/logic below
+    # ── Run BASELINE simulation (for comparison stats) ─────────────────------
+    if any_prevention:
+        print("\n  Running baseline (no prevention) for comparison…")
+        sim_base = FloodSimulation(dem_orig, cellsize,
+                                   soil_saturation_pct=soil_sat_pct,
+                                   drainage_capacity_mmhr=drain_cap)
+        base_stats = {"flooded_pct": [], "max_depth_mm": []}
+        for fr in range(num_frames):
+            inten = _intensity_factor(fr, num_frames, pattern)
+            sim_base.step(rate_mmhr, dt_h, intensity=inten, wind_map=wmap)
+            total_b = sim_base.rain_water + sim_base.river_water
+            base_stats["flooded_pct"].append(
+                float(np.sum(total_b > 0.01) / total_b.size * 100))
+            base_stats["max_depth_mm"].append(float(total_b.max() * 1000))
+        baseline_last_depth  = (sim_base.rain_water + sim_base.river_water).copy()
+    else:
+        base_stats = None
+        baseline_last_depth = None
 
     # ── Build infrastructure overlay arrays (for drawing on the map) ─────────
     H, W = dem.shape
