@@ -3,7 +3,8 @@
     "allow": [
       "Bash(python _patch_25.py)",
       "Bash(python -c \"import ast, sys; ast.parse\\(open\\('flood_animation_25%.py', encoding='utf-8'\\).read\\(\\)\\); print\\('AST parse OK'\\)\")",
-      "Bash(python -c \"import ast; ast.parse\\(open\\('flood_animation_25%.py', encoding='utf-8'\\).read\\(\\)\\); print\\('25% AST OK'\\)\")"
+      "Bash(python -c \"import ast; ast.parse\\(open\\('flood_animation_25%.py', encoding='utf-8'\\).read\\(\\)\\); print\\('25% AST OK'\\)\")",
+      "Bash(del \"Main\\\\fix_pptx.py\" \"Main\\\\flood_risk_simulation.py\" \"Main\\\\_patch_25.py\" \"Main\\\\_patch_50.py\" \"Main\\\\flood_simulation_75%.py\" \"Main\\\\flood_simulation_100%.py\" \"Main\\\\flood_animation_25%.py\" \"Main\\\\flood_animation_50%.py\")"
     ]
   }
 }

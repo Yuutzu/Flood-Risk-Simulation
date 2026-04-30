@@ -3,28 +3,31 @@
  JADE VALLEY SUBDIVISION — ANIMATED FLOOD SIMULATION
  Davao City, Philippines
 =============================================================================
- Interactive animated simulation showing:
-   • Real-time flood progression over your terrain (JVS_Simulation.tif)
-   • River overflow when rain volume causes the river to rise
-   • D8 flow routing — water follows natural valleys and channels
-   • Separate rain runoff layer vs river overflow layer
-   • Manual inputs: rainfall amount, typhoon/storm scenario, duration,
-     timestep, wind, soil saturation, drainage capacity
-   • Playback controls: Play/Pause, scrubber, speed slider, ◀◀/▶▶
-   • Save GIF button — exports animation to Results/animations/
+ Interactive animated simulation showing real-time flood progression over
+ the Jade Valley terrain using D8 flow routing, river overflow via BFS
+ dilation, and Green-Ampt infiltration.
+
+ Inputs: rainfall amount, storm scenario, duration, timestep, wind speed
+ and direction, soil saturation, drainage capacity.
+
+ Playback controls: Play/Pause, frame scrubber, speed slider, step buttons.
+ Export: Save GIF to Results/animations/, Save CSV time-series data.
 =============================================================================
 """
 
+import csv
 import heapq
 import io
 import os
+import random
 import sys
+import tkinter as tk
 import warnings
 from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
+from tkinter import ttk
 
-import csv
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import numpy as np
@@ -301,7 +304,7 @@ class FloodSimulation:
         self.accum = _flow_accumulation(fdir, self.dem)
         self.streams = build_stream_mask(self.accum)
 
-        # Normalised helpers
+        # Normalised elevation and flow-weight arrays used in routing and infiltration.
         e = self.dem
         self.elev_norm  = (e - e.min()) / (e.max() - e.min() + 1e-10)
         fa_log = np.log1p(self.accum)
@@ -323,10 +326,11 @@ class FloodSimulation:
         # so low-lying areas (already wet) infiltrate less.
         self.max_inf = 1.5 + 1.8 * self.elev_norm * (1.0 - init_sat)
 
-        # River channel = top 8% flow accumulation
+        # River channel is defined as cells in the top 8 percent of flow accumulation.
         self.river_mask = self.accum >= float(np.percentile(self.accum, 92))
 
-        # Bank elevation per river cell
+        # For each river cell, find the minimum elevation among non-river neighbours.
+        # This value is used as the bank crest height for overflow calculation.
         nbrs = [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]
         self.bank_elev = np.full((self.rows, self.cols), np.inf)
         for r in range(self.rows):
@@ -349,7 +353,7 @@ class FloodSimulation:
             self.flood_base_wse = float(self.dem.min())
         self.river_level_init = self.river_level.copy()
 
-        # BFS flood front starts at the river channel
+        # The BFS flood front is initialised at the river channel and expands outward each timestep.
         self.bfs_front = self.river_mask.copy()
 
         if SCIPY_OK:
@@ -384,8 +388,7 @@ class FloodSimulation:
         rain_m   = (rate_mmhr / 1000.0) * dt_h * intensity
         accum_mm = self.rainfall_accumulated * 1000.0
 
-        # Scenario-adaptive overflow thresholds
-        # Light: 30mm, Moderate: 50mm, Heavy: 80mm, Typhoon: 120mm
+        # Overflow is suppressed below the accumulated rainfall threshold for each PAGASA category.
         if accum_mm < 30.0:
             return
         if accum_mm < 50.0 and rate_mmhr < 10:
@@ -397,7 +400,7 @@ class FloodSimulation:
         else:
             ramp = 1.0
 
-        # Overflow multiplier: higher for typhoon, lower for light
+        # The overflow multiplier scales with scenario severity and local flow concentration.
         rise_mult = ramp * (4.0 + 10.0 * self.flow_weight[self.river_mask])
         if rate_mmhr > 20:
             rise_mult *= 1.5
@@ -408,7 +411,7 @@ class FloodSimulation:
         if flood_rise <= 0:
             return
 
-        # Cap water surface elevation by scenario severity
+        # Water surface elevation is capped at a level appropriate for each scenario severity.
         if accum_mm < 50:
             wse_cap = 0.5
         elif accum_mm < 80:
@@ -419,7 +422,7 @@ class FloodSimulation:
             wse_cap = 4.0
         eff_wse = self.flood_base_wse + min(flood_rise, wse_cap)
 
-        # BFS dilation — more hops for severe scenarios
+        # BFS dilation hop count increases with scenario severity.
         if accum_mm < 50:
             HOPS = 1
         elif accum_mm < 80:
@@ -452,11 +455,9 @@ class FloodSimulation:
                 self.bfs_front = f | new
 
         land = self.bfs_front & ~self.river_mask
-        # Blue cell shading: scale by scenario severity
-        # Light: shallow blue, Typhoon: deep blue
+        # Blue cell shading depth is proportional to scenario severity.
         blue_depth = np.clip(eff_wse - self.dem_raw, 0.0, wse_cap)
         blue_depth[self.river_mask] = 0.0
-        # Make blue cell shading proportional to depth for each scenario
         delta = (blue_depth[land] - self.river_water[land]) * (0.35 + 0.25 * ramp)
         self.river_water[land] = np.maximum(self.river_water[land] + delta, 0.0)
 
@@ -775,7 +776,7 @@ def _rain_cmap():
         (1.00, 1.00, 0.00, 0.60),
         (1.00, 0.55, 0.00, 0.65),
         (1.00, 0.20, 0.00, 0.70),
-        (0.55, 0.00, 1.00, 0.75),
+        (0.80, 0.00, 0.00, 0.70),
     ]
     return LinearSegmentedColormap.from_list('rain', colors)
 
@@ -800,29 +801,23 @@ def _river_cmap():
 
 def _intensity_factor(frame: int, total_frames: int, pattern: str) -> float:
     """
-    Per-timestep rainfall intensity multiplier.  All patterns integrate to
-    approximately 1.0 over the full storm so the total mm that falls equals
-    the scenario's rainfall_mm value.
+    Per-timestep rainfall intensity multiplier. All patterns integrate to
+    approximately 1.0 over the full storm so the total rainfall matches the
+    scenario value.
 
-    Calibrated ranges (PAGASA-consistent):
-      uniform    : 1.0  constant — steady rain at the stated rate
-      progressive: 0.40 → 1.40  — builds up as storm develops; no double peak
-      burst      : 0.30 → 1.80  — bell-curve peak at 45% of duration;
-                                   max 1.8× so Heavy Rain ≠ Typhoon
-      decreasing : 1.60 → 0.20  — convective downburst; heavy start, taper
+    uniform     : constant 1.0 — steady rain at the stated rate.
+    progressive : 0.40 to 1.40 — ramps up as the storm develops.
+    burst       : 0.30 to 1.80 — Gaussian peak centred at 45 percent of duration.
+    decreasing  : 1.60 to 0.20 — heavy convective start that tapers off.
     """
     t = frame / max(total_frames - 1, 1)
     if pattern == 'progressive':
-        # Smooth ramp: starts at 0.4, reaches 1.4 at t=0.75 then holds
         return 0.40 + 1.00 * min(t / 0.75, 1.0)
     elif pattern == 'burst':
-        # Gaussian peak centred at t=0.45; width σ²=0.04 gives a 20% duration FWHM
-        # Peak factor 1.8× — sufficient to show concentration without distorting totals
         return 0.30 + 1.50 * float(np.exp(-((t - 0.45) ** 2) / 0.055))
     elif pattern == 'decreasing':
-        # Linear taper from 1.6 at start to 0.2 at end
         return max(1.60 - 1.40 * t, 0.20)
-    return 1.0   # uniform
+    return 1.0
 
 
 # =============================================================================
@@ -968,7 +963,22 @@ def run_simulation(dem, cellsize, rainfall_mm, duration_h,
     CHART_BG = "#0A0F18"
 
     # ── Figure: 3-panel layout (map | stats | hydrograph) ─────────────────────
-    fig = plt.figure(figsize=(26, 13), facecolor=DARK)
+    import matplotlib as _mpl
+    _backend = _mpl.get_backend()
+    _screen_w, _screen_h = 1600, 900
+    _fig_w,    _fig_h    = 1300, 750
+    _dpi = 100
+    try:
+        import tkinter as _tk
+        _r = _tk.Tk(); _r.withdraw()
+        _screen_w = _r.winfo_screenwidth()
+        _screen_h = _r.winfo_screenheight()
+        _r.destroy()
+        _fig_w = min(int(_screen_w * 0.88), 1500)
+        _fig_h = min(int(_screen_h * 0.88), 860)
+    except Exception:
+        pass
+    fig = plt.figure(figsize=(_fig_w / _dpi, _fig_h / _dpi), facecolor=DARK, dpi=_dpi)
     fig.suptitle(
         f"JADE VALLEY SUBDIVISION  \u2014  FLOOD SIMULATION  |  {scenario_name}",
         fontsize=14, fontweight="bold", color=TCLR, y=0.983)
@@ -1106,11 +1116,11 @@ def run_simulation(dem, cellsize, rainfall_mm, duration_h,
         sl.label.set_color(TCLR); sl.valtext.set_color(TCLR)
         sl.label.set_fontsize(7.5)
 
-    btn_play = Button(ax_btn_play, "\u23f8 Pause", color="#1B5E20", hovercolor="#2E7D32")
-    btn_prev = Button(ax_btn_prev, "\u25c4\u25c4",   color="#0D47A1", hovercolor="#1565C0")
-    btn_next = Button(ax_btn_next, "\u25ba\u25ba",   color="#0D47A1", hovercolor="#1565C0")
-    btn_gif  = Button(ax_btn_gif,  "\U0001f4be GIF", color="#4A148C", hovercolor="#6A1B9A")
-    btn_csv  = Button(ax_btn_csv,  "\U0001f4ca CSV", color="#1A3A2A", hovercolor="#1B5E20")
+    btn_play = Button(ax_btn_play, "Pause",    color="#1B5E20", hovercolor="#2E7D32")
+    btn_prev = Button(ax_btn_prev, "\u25c4\u25c4", color="#0D47A1", hovercolor="#1565C0")
+    btn_next = Button(ax_btn_next, "\u25ba\u25ba", color="#0D47A1", hovercolor="#1565C0")
+    btn_gif  = Button(ax_btn_gif,  "Save GIF", color="#4A148C", hovercolor="#6A1B9A")
+    btn_csv  = Button(ax_btn_csv,  "Save CSV", color="#1A3A2A", hovercolor="#1B5E20")
     for b in (btn_play, btn_prev, btn_next, btn_gif, btn_csv):
         b.label.set_color("white"); b.label.set_fontsize(9)
 
@@ -1124,7 +1134,7 @@ def run_simulation(dem, cellsize, rainfall_mm, duration_h,
     def _risk_str(max_depth_mm: float, river_pct: float):
         """PAGASA-aligned depth + overflow thresholds."""
         if river_pct > 30 or max_depth_mm > 600:
-            return "\u26a0 EVACUATE NOW",                  "#FF1744"
+            return "EVACUATE NOW",                          "#FF1744"
         if river_pct > 18 or max_depth_mm > 300:
             return "MANDATORY EVACUATION",                  "#FF6D00"
         if river_pct > 8  or max_depth_mm > 150:
@@ -1209,16 +1219,13 @@ def run_simulation(dem, cellsize, rainfall_mm, duration_h,
 
     BASE_INTERVAL = 600
 
-    def _anim_step(_):
+    def _anim_step(_) -> list:
         if player["playing"]:
             draw(player["frame"] + 1)
-
-    def _anim_step_wrapper(_) -> list:  # type: ignore[return]
-        _anim_step(_)
         return []
 
     anim_obj = animation.FuncAnimation(
-        fig, _anim_step_wrapper, interval=BASE_INTERVAL,
+        fig, _anim_step, interval=BASE_INTERVAL,
         blit=False, cache_frame_data=False)
 
     def on_frame(val):
@@ -1230,22 +1237,22 @@ def run_simulation(dem, cellsize, rainfall_mm, duration_h,
     def on_play_pause(_):
         player["playing"] = not player["playing"]
         if player["playing"]:
-            btn_play.label.set_text("\u23f8 Pause")
+            btn_play.label.set_text("Pause")
             btn_play.ax.set_facecolor("#1B5E20")
         else:
-            btn_play.label.set_text("\u25ba Play")
+            btn_play.label.set_text("Play")
             btn_play.ax.set_facecolor("#BF360C")
         fig.canvas.draw_idle()
 
     def on_prev(_):
         player["playing"] = False
-        btn_play.label.set_text("\u25ba Play")
+        btn_play.label.set_text("Play")
         btn_play.ax.set_facecolor("#BF360C")
         draw(player["frame"] - 1)
 
     def on_next(_):
         player["playing"] = False
-        btn_play.label.set_text("\u25ba Play")
+        btn_play.label.set_text("Play")
         btn_play.ax.set_facecolor("#BF360C")
         draw(player["frame"] + 1)
 
@@ -1294,7 +1301,7 @@ def run_simulation(dem, cellsize, rainfall_mm, duration_h,
             _irv.set_data((river_frames[fi] > 0.005).astype(float))
             rsk_g, _ = _risk_str(stats["max_depth_mm"][fi], stats["river_pct"][fi])
             _ttxt.set_text(
-                f"\u23f1 {times_list[fi]}\n"
+                f"Time: {times_list[fi]}\n"
                 f"Rain: {stats['rain_mm'][fi]:.0f}/{rainfall_mm:.0f} mm")
             _stxt.set_text(
                 f"{scenario_name}\n\n"
@@ -1334,18 +1341,27 @@ def run_simulation(dem, cellsize, rainfall_mm, duration_h,
     btn_csv .on_clicked(on_save_csv)
 
     draw(0)
-    print("\n  \u2713 Interactive viewer ready.")
-    print("  Controls: Pause/Play | Step | Speed \u00d7 | GIF | CSV")
+    try:
+        if _backend == 'TkAgg':
+            mgr = plt.get_current_fig_manager()
+            _win = getattr(mgr, 'window', None)
+            if _win is not None and hasattr(_win, 'wm_geometry'):
+                _x = max(0, (_screen_w - _fig_w) // 2)
+                _y = max(0, (_screen_h - _fig_h) // 2)
+                try:
+                    _win.wm_geometry(f"{_fig_w}x{_fig_h}+{_x}+{_y}")
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    print("\n  Interactive viewer ready.")
+    print("  Controls: Pause/Play | Step | Speed x | Save GIF | Save CSV")
     plt.show()
 
 
 # =============================================================================
 # GUI LAUNCHER  (tkinter)
 # =============================================================================
-
-import random
-import tkinter as tk
-from tkinter import ttk
 
 
 class SimulationGUI:
@@ -1371,6 +1387,14 @@ class SimulationGUI:
         self.root.title("Jade Valley Flood Simulator — Davao City, Philippines")
         self.root.configure(bg=self.BG)
         self.root.resizable(True, True)
+        screen_w = self.root.winfo_screenwidth()
+        screen_h = self.root.winfo_screenheight()
+        win_w = min(1200, int(screen_w * 0.78))
+        win_h = min(800,  int(screen_h * 0.84))
+        x = (screen_w - win_w) // 2
+        y = (screen_h - win_h) // 2
+        self.root.geometry(f"{win_w}x{win_h}+{x}+{y}")
+        self.root.minsize(900, 600)
 
         # ── Styling ──────────────────────────────────────────────────────
         style = ttk.Style()
@@ -1442,25 +1466,21 @@ class SimulationGUI:
         sc_frame = ttk.Frame(left)
         sc_frame.pack(fill='x', pady=4)
 
-        # Scenario color coding by severity
+        # Colour each scenario radio button by severity to aid quick visual selection.
         _SC_COLORS = {
-            "1": "#3FB950",   # light  – green
-            "2": "#79C0FF",   # moderate – blue
-            "3": "#FFD740",   # heavy – amber
-            "4": "#F0883E",   # signal 1 – orange
-            "5": "#FF6B6B",   # signal 2 – red-orange
-            "6": "#FF1744",   # signal 3 – red
+            "1": "#3FB950",
+            "2": "#79C0FF",
+            "3": "#FFD740",
+            "4": "#F0883E",
+            "5": "#FF6B6B",
+            "6": "#FF1744",
         }
-        _SC_ICONS = {"1": "🟢", "2": "🔵", "3": "🟡", "4": "🟠", "5": "🔴", "6": "⚠"}
 
         for key, sc in SCENARIOS.items():
             if sc["rainfall_mm"] is None:
                 continue
-            icon  = _SC_ICONS.get(key, "")
             color = _SC_COLORS.get(key, self.TEXT)
-            label = f"{icon}  {sc['name']}"
-            if sc["rainfall_mm"] is not None:
-                label += f"  ({sc['rainfall_mm']} mm / {sc['duration_h']} h)"
+            label = f"{sc['name']}  ({sc['rainfall_mm']} mm / {sc['duration_h']} h)"
             rb = tk.Radiobutton(
                 sc_frame, text=label,
                 variable=self.scenario_var, value=key,
@@ -1584,7 +1604,7 @@ class SimulationGUI:
 
         _BFONT = ('Segoe UI', 11, 'bold')
 
-        tk.Button(btn_frame, text="\U0001F3B2  RANDOMIZE",
+        tk.Button(btn_frame, text="RANDOMIZE",
                   bg='#6E40C9', fg='white', activebackground='#8957E5',
                   font=_BFONT, width=20, height=2, bd=0, cursor='hand2',
                   command=self._randomize
@@ -1669,7 +1689,7 @@ class SimulationGUI:
 
         self._is_randomized = True
         self.desc_var.set(
-            f"🎲 Randomized:  {name}  |  {rain} mm  /  {dur} h  /  "
+            f"Randomized:  {name}  |  {rain} mm  /  {dur} h  /  "
             f"wind {wind} km/h  /  soil {soil}%  /  drain {drain} mm/hr"
         )
 

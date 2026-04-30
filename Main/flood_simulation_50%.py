@@ -3,49 +3,48 @@
  JADE VALLEY SUBDIVISION — FLOOD SIMULATION WITH PREVENTION MEASURES  (50%)
  Davao City, Philippines
 =============================================================================
- This is the 50% milestone build — an extension of flood_animation.py (25%).
+ This build extends the 25 percent baseline with two configurable prevention
+ measures that physically modify the DEM before the simulation runs.
 
- What's new in 50%:
-   • Prevention Measures Panel in the GUI (separate tab, usable alongside
-     any storm scenario)
-   • Prevention Measure 1 — Riverbank Floodwall  (+1.5 m along west bank)
-   • Prevention Measure 2 — Drainage Canal Network  (east outlet + south branch)
-   • Both measures modify the DEM before the simulation runs, so the flood
-     physics itself responds realistically — water is blocked / rerouted.
-   • The animation shows three layers simultaneously:
-       Layer 1  — JPEG map background (aligned to DEM grid)
-       Layer 2  — River channel band (always-visible sky-blue)
-       Layer 3  — Rain accumulation (green → yellow → red, low opacity)
-       Layer 4  — River overflow spread (blue wash, low opacity)
-       Layer 5  — Prevention infrastructure drawn as coloured overlays:
-                    floodwall = red hatched line along west bank
-                    drainage canals = bright cyan corridors
-   • Stats panel shows both flood numbers AND which measures are active
-   • A third prevention-only result panel appears after the animation ends
-     showing the difference map: baseline depth minus improved depth.
+ Prevention Measure 1 — Riverbank Floodwall: raises western river bank cells
+ by a user-specified height, creating a physical DEM barrier that delays
+ river overflow until the water surface exceeds the raised crest.
 
- Run:  python Main/flood_animation_50.py
+ Prevention Measure 2 — Drainage Canal Network: lowers a corridor of cells
+ (east outlet plus south branch) to create open channels. Runoff naturally
+ drains into the canals and away from the residential core.
+
+ The animation renders five overlapping layers: JPEG background, river
+ channel band, rain accumulation depth, river overflow, and the prevention
+ infrastructure overlays in red (floodwall) and cyan (canal).
+
+ The stats panel shows live flood numbers for both the improved and baseline
+ (no prevention) runs so the effectiveness is visible frame by frame.
+
+ Run:  python Main/flood_simulation_50%.py
 =============================================================================
 """
 
+import csv
 import heapq
 import io
 import os
 import random
 import sys
+import tkinter as tk
 import warnings
 from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
+from tkinter import ttk
 
 import matplotlib.animation as animation
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
-import tkinter as tk
 from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.patches import Patch
 from matplotlib.widgets import Button, Slider
-from tkinter import ttk
 
 warnings.filterwarnings("ignore")
 
@@ -94,26 +93,55 @@ for _d in (ANIM_DIR, DATA_OUT, MAPS_DIR):
 # =============================================================================
 
 SCENARIOS = {
-    "1": {"name": "Light Rain",
-          "rainfall_mm": 8,  "duration_h": 2.0,  "pattern": "uniform",
-          "desc": "Avg 4 mm/hr — minor puddles, no flood risk"},
-        "2": {"name": "Moderate Rain",
-            "rainfall_mm": 36, "duration_h": 3.0,  "pattern": "progressive",
-            "desc": "Avg 12 mm/hr — minor street flooding; low zones collect water"},
-    "3": {"name": "Heavy Rain",
-          "rainfall_mm": 35, "duration_h": 4.0,  "pattern": "burst",
-          "desc": "Avg 8.75 mm/hr — low areas may collect water"},
-    "4": {"name": "Typhoon Signal 1 (Tropical Depression)",
-          "rainfall_mm": 100, "duration_h": 8.0, "pattern": "progressive",
-          "desc": "Avg 12.5 mm/hr — river may rise; monitor advisories"},
-    "5": {"name": "Typhoon Signal 2 (Tropical Storm)",
-          "rainfall_mm": 180, "duration_h": 12.0, "pattern": "burst",
-          "desc": "Avg 15 mm/hr — widespread flooding; prepare to evacuate"},
-    "6": {"name": "Typhoon Signal 3 (Severe Typhoon)",
-          "rainfall_mm": 300, "duration_h": 18.0, "pattern": "burst",
-          "desc": "Avg 17 mm/hr — catastrophic flooding; evacuate"},
-    "7": {"name": "Custom — I will enter my own values",
-          "rainfall_mm": None, "duration_h": None, "pattern": None, "desc": ""},
+    "1": {
+        "name"       : "Light Rain",
+        "rainfall_mm": 15,
+        "duration_h" : 2.0,
+        "pattern"    : "uniform",
+        "desc"       : "Avg 7.5 mm/hr — surface puddles in low areas; drains within hours",
+    },
+    "2": {
+        "name"       : "Moderate Rain",
+        "rainfall_mm": 36,
+        "duration_h" : 3.0,
+        "pattern"    : "progressive",
+        "desc"       : "Avg 12 mm/hr — minor street flooding; low zones collect water",
+    },
+    "3": {
+        "name"       : "Heavy Rain",
+        "rainfall_mm": 90,
+        "duration_h" : 4.0,
+        "pattern"    : "progressive",
+        "desc"       : "Avg 22.5 mm/hr — widespread street flooding; monitor river levels",
+    },
+    "4": {
+        "name"       : "Typhoon Signal 1 (Tropical Depression)",
+        "rainfall_mm": 150,
+        "duration_h" : 8.0,
+        "pattern"    : "progressive",
+        "desc"       : "Avg 18.75 mm/hr — river rises; some low areas flood; prepare",
+    },
+    "5": {
+        "name"       : "Typhoon Signal 2 (Tropical Storm)",
+        "rainfall_mm": 250,
+        "duration_h" : 12.0,
+        "pattern"    : "burst",
+        "desc"       : "Avg 20.8 mm/hr — widespread flooding; voluntary evacuation",
+    },
+    "6": {
+        "name"       : "Typhoon Signal 3 (Severe Typhoon)",
+        "rainfall_mm": 400,
+        "duration_h" : 18.0,
+        "pattern"    : "burst",
+        "desc"       : "Avg 22.2 mm/hr — catastrophic river overflow; mandatory evacuation",
+    },
+    "7": {
+        "name"       : "Custom — I will enter my own values",
+        "rainfall_mm": None,
+        "duration_h" : None,
+        "pattern"    : None,
+        "desc"       : "",
+    },
 }
 
 # =============================================================================
@@ -426,12 +454,12 @@ class FloodSimulation:
                         nr, nc = r + dr, c + dc
                         if (0 <= nr < self.rows and 0 <= nc < self.cols
                                 and not self.river_mask[nr, nc]):
-                            be = self.dem[nr, nc]
+                            be = self.dem_raw[nr, nc]
                             if be < self.bank_elev[r, c]:
                                 self.bank_elev[r, c] = be
         valid = self.river_mask & np.isfinite(self.bank_elev)
         if valid.any():
-            self.bank_elev[~valid & self.river_mask] = self.dem[~valid & self.river_mask]
+            self.bank_elev[~valid & self.river_mask] = self.dem_raw[~valid & self.river_mask]
             self.river_level[valid]  = self.bank_elev[valid]
             self.flood_base_wse      = float(np.nanpercentile(self.bank_elev[valid], 50))
         else:
@@ -493,25 +521,21 @@ class FloodSimulation:
             ramp = np.clip((accum_mm - 20.0) / 16.0, 0.0, 1.0) * 0.15
             rise_mult = ramp * (2.0 + 4.0 * self.flow_weight[self.river_mask])
             hops = 1
-            blue_alpha = 0.25
         elif accum_mm < 60.0:
-            # Moderate rain: further reduced overflow and blue shading
+            # Moderate rain: reduced overflow
             ramp = np.clip((accum_mm - 36.0) / 24.0, 0.0, 1.0) * 0.18 + 0.10
             rise_mult = ramp * (1.5 + 2.5 * self.flow_weight[self.river_mask])
             hops = 1
-            blue_alpha = 0.22
         elif accum_mm < 120.0:
             # Heavy rain: more pronounced overflow
             ramp = np.clip((accum_mm - 60.0) / 60.0, 0.0, 1.0) * 0.7 + 0.5
             rise_mult = ramp * (3.5 + 8.0 * self.flow_weight[self.river_mask])
             hops = 2
-            blue_alpha = 0.52
         else:
             # Typhoon: severe overflow
             ramp = 1.0
             rise_mult = ramp * (4.0 + 10.0 * self.flow_weight[self.river_mask])
             hops = 4
-            blue_alpha = 0.62
         if effective_rate > 20:
             rise_mult *= 1.2
         # If floodwall is present, require overtopping for overflow
@@ -702,7 +726,7 @@ def _rain_cmap():
         (1.00, 1.00, 0.00, 0.60),
         (1.00, 0.55, 0.00, 0.65),
         (1.00, 0.20, 0.00, 0.70),
-        (0.55, 0.00, 1.00, 0.75),
+        (0.80, 0.00, 0.00, 0.70),
     ]
     return LinearSegmentedColormap.from_list('rain', colors)
 
@@ -723,32 +747,33 @@ def _river_cmap():
 # INTENSITY PATTERN  (identical to 25%)
 # =============================================================================
 
-def _intensity_factor(frame, total_frames, pattern):
+def _intensity_factor(frame: int, total_frames: int, pattern: str) -> float:
+    """
+    Per-timestep rainfall intensity multiplier. All patterns integrate to
+    approximately 1.0 over the full storm so the total rainfall matches the
+    scenario value.
+
+    uniform     : constant 1.0 — steady rain at the stated rate.
+    progressive : 0.40 to 1.40 — ramps up as the storm develops.
+    burst       : 0.30 to 1.80 — Gaussian peak centred at 45 percent of duration.
+    decreasing  : 1.60 to 0.20 — heavy convective start that tapers off.
+    """
     t = frame / max(total_frames - 1, 1)
     if pattern == 'progressive':
-        return 0.2 + 1.8 * min(t * 1.5, 1.0)
+        return 0.40 + 1.00 * min(t / 0.75, 1.0)
     if pattern == 'burst':
-        return 0.15 + 3.0 * float(np.exp(-((t - 0.45) ** 2) / 0.040))
+        return 0.30 + 1.50 * float(np.exp(-((t - 0.45) ** 2) / 0.055))
     if pattern == 'decreasing':
-        return max(2.0 - 1.8 * t, 0.05)
+        return max(1.60 - 1.40 * t, 0.20)
     return 1.0
 
 # =============================================================================
-# ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  MAIN SIMULATION RUNNER  ← UPDATED for 50%                             ║
-# ║                                                                          ║
-# ║  Accepts:                                                                ║
-# ║    use_floodwall / use_canal  — whether to apply each measure           ║
-# ║    wall_height / canal_depth  — configurable from GUI                  ║
-# ║                                                                          ║
-# ║  Behaviour:                                                              ║
-# ║    1. Applies prevention measures to DEM (if any selected)              ║
-# ║    2. Runs the simulation on the modified DEM                            ║
-# ║    3. ALSO runs the same simulation on the original DEM (baseline)      ║
-# ║       so the stats panel can show the improvement live                  ║
-# ║    4. Draws prevention infrastructure as coloured overlays on the map   ║
-# ╚══════════════════════════════════════════════════════════════════════════╝
+# MAIN SIMULATION RUNNER
 # =============================================================================
+# Accepts prevention flags (use_floodwall, use_canal) and dimension parameters
+# (wall_height, canal_depth) from the GUI. When prevention is active it runs
+# a second baseline simulation on the original DEM so the stats panel can
+# display improvement deltas frame by frame.
 
 def run_simulation(dem: np.ndarray, cellsize: float,
                    rainfall_mm: float, duration_h: float,
@@ -799,7 +824,8 @@ def run_simulation(dem: np.ndarray, cellsize: float,
                           soil_saturation_pct=soil_sat_pct,
                           drainage_capacity_mmhr=drain_cap,
                           canal_mask=canal_mask,
-                          wall_mask=wall_mask)
+                          wall_mask=wall_mask,
+                          rainfall_mm=rainfall_mm)
     rain_frames  = []
     river_frames = []
     times_list   = []
@@ -831,7 +857,8 @@ def run_simulation(dem: np.ndarray, cellsize: float,
         print("\n  Running baseline (no prevention) for comparison…")
         sim_base = FloodSimulation(dem_orig, cellsize,
                                    soil_saturation_pct=soil_sat_pct,
-                                   drainage_capacity_mmhr=drain_cap)
+                                   drainage_capacity_mmhr=drain_cap,
+                                   rainfall_mm=rainfall_mm)
         base_stats = {"flooded_pct": [], "max_depth_mm": []}
         for fr in range(num_frames):
             inten = _intensity_factor(fr, num_frames, pattern)
@@ -840,10 +867,8 @@ def run_simulation(dem: np.ndarray, cellsize: float,
             base_stats["flooded_pct"].append(
                 float(np.sum(total_b > 0.01) / total_b.size * 100))
             base_stats["max_depth_mm"].append(float(total_b.max() * 1000))
-        baseline_last_depth  = (sim_base.rain_water + sim_base.river_water).copy()
     else:
         base_stats = None
-        baseline_last_depth = None
 
     # ── Build infrastructure overlay arrays (for drawing on the map) ─────────
     H, W = dem.shape
@@ -876,32 +901,26 @@ def run_simulation(dem: np.ndarray, cellsize: float,
     PANEL = '#161B22'
     TCLR  = '#E6EDF3'
     ACC   = '#4FC3F7'
-    WALL_CLR   = '#FF4444'
-    CANAL_CLR  = '#00DDEE'
 
     title_suffix = f"  |  Prevention: {prevention_str}" if any_prevention else ""
-    # Dynamically size the figure window to fit the screen
+
+    # Determine figure size from screen dimensions at runtime.
     import matplotlib
-    backend = matplotlib.get_backend()
-    # Set safe defaults
+    backend   = matplotlib.get_backend()
     screen_w, screen_h = 1600, 900
-    fig_w, fig_h = 1300, 800
+    fig_w, fig_h       = 1300, 800
     dpi = 100
     try:
-        import tkinter as tk
-        root = tk.Tk()
-        root.withdraw()
-        screen_w = root.winfo_screenwidth()
-        screen_h = root.winfo_screenheight()
-        root.destroy()
+        import tkinter as _tk
+        _r = _tk.Tk(); _r.withdraw()
+        screen_w = _r.winfo_screenwidth()
+        screen_h = _r.winfo_screenheight()
+        _r.destroy()
         fig_w = min(int(screen_w * 0.85), 1500)
         fig_h = min(int(screen_h * 0.85), 900)
     except Exception:
         pass
     figsize = (fig_w / dpi, fig_h / dpi)
-    DARK  = '#0D1117'
-    TCLR  = '#E6EDF3'
-    title_suffix = f"  |  Prevention: {prevention_str}" if any_prevention else ""
     fig = plt.figure(figsize=figsize, facecolor=DARK, dpi=dpi)
     fig.suptitle(
         f"JADE VALLEY  —  FLOOD SIMULATION  |  {scenario_name}{title_suffix}",
@@ -932,8 +951,8 @@ def run_simulation(dem: np.ndarray, cellsize: float,
 
     # ── Map layers ──────────────────────────────────────────────────────────
     # Layer 1: JPEG background — use 'bilinear' for smooth, photographic look (as in 25%)
-    im_bg    = ax_map.imshow(bg, extent=ext, aspect='auto',
-                              zorder=1, interpolation='bilinear')
+    ax_map.imshow(bg, extent=ext, aspect='auto',
+                  zorder=1, interpolation='bilinear')
     # Layer 2: Rain accumulation (updated each frame)
     im_rain  = ax_map.imshow(rain_frames[0] * 1000,
                               cmap=cmap_rain, vmin=0, vmax=600,
@@ -958,32 +977,73 @@ def run_simulation(dem: np.ndarray, cellsize: float,
         ax_map.imshow(canal_rgba, extent=ext, aspect='auto', zorder=5,
                       interpolation='nearest')
 
+    # Layer 6: Stream-network overlay (permanent sky-blue band — matches 25% file)
+    strm_rgba = np.zeros((H, W, 4), dtype=np.float32)
+    strm_rgba[sim.streams, 0] = 0.15
+    strm_rgba[sim.streams, 2] = 0.90
+    strm_rgba[sim.streams, 3] = 0.65
+    ax_map.imshow(strm_rgba, extent=ext, aspect='auto', zorder=6,
+                  interpolation='nearest')
+
+    # Elevation contour lines (faint topographic reference)
+    try:
+        ax_map.contour(np.flipud(dem),
+                       levels=np.linspace(dem.min(), dem.max(), 14),
+                       colors="white", alpha=0.10, linewidths=0.4, zorder=4)
+    except Exception:
+        pass
+
     ax_map.set_xlim(0, W); ax_map.set_ylim(H, 0)
     ax_map.tick_params(colors=TCLR, labelsize=8)
     for sp in ax_map.spines.values():
         sp.set_edgecolor('#30363D')
+
+    # Scale bar (~50 m physical length)
+    sc_cells = max(3, int(round(50.0 / cellsize)))
+    sc_m     = sc_cells * cellsize
+    bx0, bx1 = W * 0.05, W * 0.05 + sc_cells
+    by, bh   = H * 0.930, H * 0.007
+    ax_map.fill_between([bx0, bx1], [by - bh] * 2, [by + bh] * 2,
+                        color="white", zorder=15)
+    ax_map.text((bx0 + bx1) / 2, by + bh * 3.0, f"{sc_m:.0f} m",
+                color="white", fontsize=7, ha="center", va="bottom",
+                fontweight="bold", zorder=15)
+
+    # North arrow
+    nx, ny0, ny1 = W * 0.938, H * 0.115, H * 0.060
+    ax_map.annotate("", xy=(nx, ny1), xytext=(nx, ny0),
+                    arrowprops=dict(arrowstyle="->", color="white", lw=2.0), zorder=15)
+    ax_map.text(nx, ny1 - H * 0.014, "N", color="white",
+                fontsize=9, ha="center", va="bottom", fontweight="bold", zorder=15)
 
     # Colorbar
     cbar = fig.colorbar(im_rain, ax=ax_map, orientation='vertical',
                         pad=0.01, shrink=0.80)
     cbar.set_label("Rain Water Depth (mm)", color=TCLR, fontsize=9)
     cbar.set_ticks([0, 30, 100, 200, 400, 600])
-    cbar.ax.set_yticklabels(['Dry','30','100','200','400','600+'],
+    cbar.ax.set_yticklabels(['Dry', '30', '100', '200', '400', '600+'],
                              color=TCLR, fontsize=8)
     cbar.ax.tick_params(colors=TCLR)
 
-    # Legend for prevention overlays (lower opacity to match overlays)
-    from matplotlib.patches import Patch
-    legend_handles = []
+    # Map legend — water layers + prevention overlays
+    legend_handles = [
+        Patch(facecolor="#29B6F6", alpha=0.80, label="Stream channel"),
+        Patch(facecolor="#1E90FF", alpha=0.75, label="River overflow"),
+        Patch(facecolor="#00FFCC", alpha=0.55, label="Runoff ≤ 30 mm"),
+        Patch(facecolor="#FFFF00", alpha=0.60, label="Runoff ≤ 100 mm"),
+        Patch(facecolor="#FF6600", alpha=0.65, label="Runoff ≤ 300 mm"),
+        Patch(facecolor="#CC00FF", alpha=0.70, label="Runoff > 300 mm"),
+    ]
     if wall_mask.any():
-        legend_handles.append(Patch(facecolor=(0.9,0.15,0.1,0.32), edgecolor='r', label=f'Floodwall (+{wall_height:.1f} m)'))
+        legend_handles.append(Patch(facecolor=(0.9, 0.15, 0.1, 0.32), edgecolor='r',
+                                    label=f'Floodwall (+{wall_height:.1f} m)'))
     if canal_mask.any():
-        legend_handles.append(Patch(facecolor=(0,0.88,0.95,0.28), edgecolor='c', label='Drainage Canal'))
-    if legend_handles:
-        ax_map.legend(handles=legend_handles, loc='lower right', fontsize=10, framealpha=0.85)
-    # Effectiveness stats (difference between baseline and improved)
-    # (Moved after stats_txt is defined)
-    # Effectiveness stats (difference between baseline and improved)
+        legend_handles.append(Patch(facecolor=(0, 0.88, 0.95, 0.28), edgecolor='c',
+                                    label='Drainage Canal'))
+    ax_map.legend(handles=legend_handles, loc='lower right',
+                  facecolor="#0D1117", edgecolor=ACC,
+                  labelcolor="#E6EDF3", fontsize=6.5,
+                  framealpha=0.88, handlelength=1.2, borderpad=0.7)
     # Time badge
     time_txt = ax_map.text(
         0.015, 0.975, "", transform=ax_map.transAxes,
@@ -991,30 +1051,7 @@ def run_simulation(dem: np.ndarray, cellsize: float,
         bbox=dict(boxstyle='round,pad=0.5', facecolor=PANEL,
                   alpha=0.90, edgecolor=ACC, linewidth=1.5))
 
-    # Stats text
-    stats_txt = ax_stats.text(
-        0.05, 0.97, "", fontsize=10, family='monospace',
-        color=TCLR, va='top', transform=ax_stats.transAxes,
-        bbox=dict(boxstyle='round,pad=0.8', facecolor='#0D1117',
-                  edgecolor=ACC, alpha=0.92, linewidth=1.2))
-
-    # Effectiveness stats (difference between baseline and improved)
-    if any_prevention and base_stats is not None:
-        flood_diff = np.array(base_stats['flooded_pct']) - np.array(stats['flooded_pct'])
-        depth_diff = np.array(base_stats['max_depth_mm']) - np.array(stats['max_depth_mm'])
-        eff_str = (f"\nEffectiveness vs Baseline:\n"
-                  f"Flooded area reduced: {flood_diff[-1]:.2f}%\n"
-                  f"Max depth reduced: {depth_diff[-1]:.1f} mm")
-        stats_txt.set_text(stats_txt.get_text() + eff_str)
-
-    # Time badge
-    time_txt = ax_map.text(
-        0.015, 0.975, "", transform=ax_map.transAxes,
-        fontsize=12, fontweight='bold', color='white', va='top',
-        bbox=dict(boxstyle='round,pad=0.5', facecolor=PANEL,
-                  alpha=0.90, edgecolor=ACC, linewidth=1.5))
-
-    # Stats text
+    # Stats text (effectiveness comparison shown live in draw() via improve_lines)
     stats_txt = ax_stats.text(
         0.05, 0.97, "", fontsize=10, family='monospace',
         color=TCLR, va='top', transform=ax_stats.transAxes,
@@ -1037,10 +1074,10 @@ def run_simulation(dem: np.ndarray, cellsize: float,
         sl.label.set_color(TCLR); sl.valtext.set_color(TCLR)
         sl.label.set_fontsize(8)
 
-    btn_play = Button(ax_btn_play, '⏸ Pause', color='#1B5E20', hovercolor='#2E7D32')
-    btn_prev = Button(ax_btn_prev, '◀◀',      color='#0D47A1', hovercolor='#1565C0')
-    btn_next = Button(ax_btn_next, '▶▶',      color='#0D47A1', hovercolor='#1565C0')
-    btn_gif  = Button(ax_btn_gif,  '💾 GIF',   color='#4A148C', hovercolor='#6A1B9A')
+    btn_play = Button(ax_btn_play, 'Pause',    color='#1B5E20', hovercolor='#2E7D32')
+    btn_prev = Button(ax_btn_prev, '◀◀', color='#0D47A1', hovercolor='#1565C0')
+    btn_next = Button(ax_btn_next, '▶▶', color='#0D47A1', hovercolor='#1565C0')
+    btn_gif  = Button(ax_btn_gif,  'Save GIF', color='#4A148C', hovercolor='#6A1B9A')
     for b in (btn_play, btn_prev, btn_next, btn_gif):
         b.label.set_color('white'); b.label.set_fontsize(10)
 
@@ -1051,10 +1088,9 @@ def run_simulation(dem: np.ndarray, cellsize: float,
     wind_str = f"{wind_speed:.0f} km/h {compass}" if wind_speed >= 1 else "None"
 
     def _risk_str(max_depth_mm, river_pct):
-        # PAGASA-aligned: use max water depth and river overflow area
-        # 50mm = ankle-deep (STANDBY), 150mm = shin (PRE-EVAC), 300mm = knee (MANDATORY), 600mm = waist (EVACUATE)
+        # Thresholds: 50 mm ankle-deep, 150 mm shin, 300 mm knee, 600 mm waist height.
         if river_pct > 30 or max_depth_mm > 600:
-            return "⚠ EVACUATE NOW",             '#FF1744'
+            return "EVACUATE NOW",               '#FF1744'
         if river_pct > 18 or max_depth_mm > 300:
             return "MANDATORY EVACUATION",       '#FF6D00'
         if river_pct > 8  or max_depth_mm > 150:
@@ -1067,7 +1103,6 @@ def run_simulation(dem: np.ndarray, cellsize: float,
         fi = int(fi) % num_frames
         player['frame'] = fi
         rn = rain_frames[fi] * 1000
-        rv = river_frames[fi]
         im_rain .set_data(rn)
         im_rain .set_clim(0, min(max(float(rn.max()), 30) * 1.3, 600))
         # Blue cell shading: EXACTLY match 25% (total water depth, nonlinear colormap)
@@ -1149,8 +1184,7 @@ def run_simulation(dem: np.ndarray, cellsize: float,
     def _anim_step(_):
         if player['playing']:
             draw(player['frame'] + 1)
-        return []   # FIX: FuncAnimation requires an iterable return value;
-                    # without this the animation timer fires but visuals don't update
+        return []
 
     anim_obj = animation.FuncAnimation(
         fig, _anim_step, interval=BASE_INTERVAL,
@@ -1165,22 +1199,22 @@ def run_simulation(dem: np.ndarray, cellsize: float,
     def on_play_pause(_):
         player['playing'] = not player['playing']
         if player['playing']:
-            btn_play.label.set_text('⏸ Pause')
+            btn_play.label.set_text('Pause')
             btn_play.ax.set_facecolor('#1B5E20')
         else:
-            btn_play.label.set_text('▶ Play')
+            btn_play.label.set_text('Play')
             btn_play.ax.set_facecolor('#BF360C')
         fig.canvas.draw_idle()
 
     def on_prev(_):
         player['playing'] = False
-        btn_play.label.set_text('▶ Play')
+        btn_play.label.set_text('Play')
         btn_play.ax.set_facecolor('#BF360C')
         draw(player['frame'] - 1)
 
     def on_next(_):
         player['playing'] = False
-        btn_play.label.set_text('▶ Play')
+        btn_play.label.set_text('Play')
         btn_play.ax.set_facecolor('#BF360C')
         draw(player['frame'] + 1)
 
@@ -1221,7 +1255,7 @@ def run_simulation(dem: np.ndarray, cellsize: float,
             _irn.set_data(rn)
             _irn.set_clim(4, min(max(float(rn.max()), 40)*1.3, 600))
             _irv.set_data((river_frames[fi]>0.015).astype(float))
-            _tt.set_text(f"⏱ {times_list[fi]}\nRain: {stats['rain_mm'][fi]:.0f}/{rainfall_mm:.0f} mm")
+            _tt.set_text(f"Time: {times_list[fi]}\nRain: {stats['rain_mm'][fi]:.0f}/{rainfall_mm:.0f} mm")
             _st.set_text(f"{scenario_name}\nPrevention: {prevention_str}\n\n"
                          f"Time:    {times_list[fi]}\n"
                          f"Rain:    {stats['rain_mm'][fi]:.1f} mm\n"
@@ -1241,7 +1275,7 @@ def run_simulation(dem: np.ndarray, cellsize: float,
         plt.close(tmp_fig)
         frames_pil[0].save(out, save_all=True, append_images=frames_pil[1:],
                            loop=0, duration=int(1000 / 5))
-        print(f"  ✓ GIF saved  ({len(frames_pil)} frames)")
+        print(f"  GIF saved  ({len(frames_pil)} frames)")
         player['playing'] = was
 
     sl_frame.on_changed(on_frame)
@@ -1252,23 +1286,16 @@ def run_simulation(dem: np.ndarray, cellsize: float,
     btn_gif .on_clicked(on_save_gif)
 
     draw(0)
-    print("\n  ✓ Interactive viewer ready.")
-    print("  Controls: ⏸/▶ Play-Pause | ◀◀/▶▶ Step | Speed ×  |  💾 GIF")
+    print("\n  Interactive viewer ready.")
+    print("  Controls: Pause/Play | Step Back/Forward | Speed x | Save GIF")
     plt.show()
 
 # =============================================================================
-# ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  SIMULATION GUI  — 50% VERSION                                          ║
-# ║                                                                          ║
-# ║  Two-tab layout:                                                         ║
-# ║    Tab 1 "Storm Scenario" — identical to 25% GUI                        ║
-# ║    Tab 2 "Prevention Measures" — NEW controls for floodwall + canal     ║
-# ║                                                                          ║
-# ║  The two tabs are completely independent: you can pick any storm        ║
-# ║  scenario AND any combination of prevention measures.  Both are         ║
-# ║  passed together to run_simulation() so one animation shows both.      ║
-# ╚══════════════════════════════════════════════════════════════════════════╝
+# SIMULATION GUI
 # =============================================================================
+# Two-tab layout: Tab 1 (Storm Scenario) mirrors the 25% GUI controls.
+# Tab 2 (Prevention Measures) adds checkboxes and sliders for the floodwall
+# and drainage canal. Both tabs feed into a single run_simulation() call.
 
 class SimulationGUI:
     """Tkinter GUI — storm tab + separate prevention measures tab."""
@@ -1284,8 +1311,6 @@ class SimulationGUI:
     WHITE  = '#FFFFFF'
     WALL   = '#FF5555'
     CANAL  = '#00DDEE'
-
-    # --- Add missing methods if not present ---
 
     def _on_preset_change(self, *args, **kwargs):
         """Update all sliders, description, and prevention checkboxes when a scenario preset is selected."""
@@ -1335,14 +1360,13 @@ class SimulationGUI:
         self.cellsize = cellsize
 
         self.root = tk.Tk()
-        self.root.title("Jade Valley Flood Simulator 50% — Prevention Measures")
+        self.root.title("Jade Valley Flood Simulator — Prevention Measures")
         self.root.configure(bg=self.BG)
         self.root.resizable(True, True)
-        # More compact and modern window size
         screen_w = self.root.winfo_screenwidth()
         screen_h = self.root.winfo_screenheight()
-        win_w = min(1000, int(screen_w * 0.6))
-        win_h = min(600, int(screen_h * 0.6))
+        win_w = min(1200, int(screen_w * 0.78))
+        win_h = min(780,  int(screen_h * 0.82))
         x = (screen_w - win_w) // 2
         y = (screen_h - win_h) // 2
         self.root.geometry(f"{win_w}x{win_h}+{x}+{y}")
@@ -1384,8 +1408,8 @@ class SimulationGUI:
 
         tab_storm = ttk.Frame(nb)
         tab_prev  = ttk.Frame(nb)
-        nb.add(tab_storm, text='🌧  Storm Scenario')
-        nb.add(tab_prev,  text='🛡  Prevention Measures')
+        nb.add(tab_storm, text='Storm Scenario')
+        nb.add(tab_prev,  text='Prevention Measures')
 
         self._build_storm_tab(tab_storm)
         self._build_prevention_tab(tab_prev)
@@ -1395,7 +1419,7 @@ class SimulationGUI:
         btn_frame.pack(fill='x', padx=16, pady=(4, 14))
         _BF = ('Segoe UI', 10, 'bold')
 
-        tk.Button(btn_frame, text="🎲  RANDOMIZE",
+        tk.Button(btn_frame, text="RANDOMIZE",
               bg='#6E40C9', fg='white', activebackground='#8957E5',
               font=_BF, width=14, height=1, bd=0, cursor='hand2',
               command=self._randomize).pack(side='left', padx=4)
@@ -1430,18 +1454,28 @@ class SimulationGUI:
         left  = ttk.Frame(main); left .grid(row=0, column=0, sticky='nsew', padx=(0, 8))
         right = ttk.Frame(main); right.grid(row=0, column=1, sticky='nsew', padx=(8, 0))
 
-        # Scenario presets
+        # Scenario presets with colour coding by severity.
         ttk.Label(left, text="SCENARIO PRESET",
                   style='Header.TLabel').pack(anchor='w')
         self.scenario_var = tk.StringVar(value="3")
         sc_frame = ttk.Frame(left); sc_frame.pack(fill='x', pady=4)
+        _SC_COLORS = {
+            "1": "#3FB950",
+            "2": "#79C0FF",
+            "3": "#FFD740",
+            "4": "#F0883E",
+            "5": "#FF6B6B",
+            "6": "#FF1744",
+        }
         for key, sc in SCENARIOS.items():
             if sc["rainfall_mm"] is None:
                 continue
+            color = _SC_COLORS.get(key, self.TEXT)
+            label = f"{sc['name']}  ({sc['rainfall_mm']} mm / {sc['duration_h']} h)"
             tk.Radiobutton(
-                sc_frame, text=sc['name'],
+                sc_frame, text=label,
                 variable=self.scenario_var, value=key,
-                bg=self.BG, fg=self.TEXT, selectcolor=self.PANEL,
+                bg=self.BG, fg=color, selectcolor=self.PANEL,
                 activebackground=self.BG, activeforeground=self.ACCENT,
                 font=('Segoe UI', 9), anchor='w',
                 command=self._on_preset_change
@@ -1449,8 +1483,25 @@ class SimulationGUI:
         self.desc_var = tk.StringVar()
         tk.Label(sc_frame, textvariable=self.desc_var, bg=self.CARD,
                  fg='#8B949E', font=('Segoe UI', 9, 'italic'),
-                 wraplength=340, justify='left', padx=8, pady=6
+                 wraplength=380, justify='left', padx=8, pady=6
                  ).pack(fill='x', pady=(6, 0))
+
+        # PAGASA rainfall classification reference bands.
+        ref_frame = tk.Frame(sc_frame, bg=self.CARD)
+        ref_frame.pack(fill='x', padx=4, pady=(4, 2))
+        tk.Label(ref_frame, text="PAGASA Classification (mm/hr):",
+                 bg=self.CARD, fg='#8B949E',
+                 font=('Segoe UI', 8, 'bold')).pack(anchor='w', padx=4)
+        band_row = tk.Frame(ref_frame, bg=self.CARD)
+        band_row.pack(fill='x', padx=4, pady=2)
+        for lbl, col in [("Light  0-7.5",   "#3FB950"),
+                          ("Moderate 7.5-15", "#79C0FF"),
+                          ("Heavy 15-30",    "#FFD740"),
+                          ("Intense >30",    "#FF6B6B")]:
+            tk.Label(band_row, text=f"  {lbl}  ",
+                     bg=col, fg='#0D1117',
+                     font=('Segoe UI', 7, 'bold'),
+                     relief='flat', padx=2).pack(side='left', padx=2, pady=1)
 
         # Storm pattern
         sep = ttk.Frame(left); sep.pack(fill='x', pady=8)
@@ -1619,27 +1670,6 @@ class SimulationGUI:
 
     def _randomize(self, *args, **kwargs):
         """Randomize rainfall, scenario parameters, and prevention checkboxes."""
-        import matplotlib
-        import random
-        backend = matplotlib.get_backend() if hasattr(matplotlib, 'get_backend') else 'TkAgg'
-        screen_w, screen_h = 1600, 900
-        fig_w, fig_h = 1300, 800
-        dpi = 100
-        TCLR = '#E6EDF3'
-        DARK = '#0D1117'
-        title_suffix = ""
-        scenario_name = "Randomized"
-        try:
-            import tkinter as tk
-            root = tk.Tk()
-            root.withdraw()
-            screen_w = root.winfo_screenwidth()
-            screen_h = root.winfo_screenheight()
-            root.destroy()
-            fig_w = min(int(screen_w * 0.85), 1500)
-            fig_h = min(int(screen_h * 0.85), 900)
-        except Exception:
-            pass
         # Rainfall scenario classes
         classes = [
             ("Light Rain",        10,  50,  1.0,  3.0),
@@ -1664,7 +1694,7 @@ class SimulationGUI:
         self.pattern_var.set(random.choice(["uniform","progressive","burst","decreasing"]))
         self.start_time_var.set(f"{random.randint(0,23):02d}:00")
         self._is_randomized = True
-        self.desc_var.set(f"🎲 Randomized: {name}  |  {rain} mm / {dur} h")
+        self.desc_var.set(f"Randomized: {name}  |  {rain} mm / {dur} h")
         # Set prevention checkboxes based on randomized rain
         if rain <= 36:
             self.fw_var.set(False)
