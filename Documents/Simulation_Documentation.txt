@@ -1,0 +1,737 @@
+================================================================================
+  JADE VALLEY SUBDIVISION — FLOOD SIMULATION SYSTEM DOCUMENTATION
+  Davao City, Philippines
+================================================================================
+  Date       : May 5, 2026
+  Location   : Jade Valley Subdivision, Davao City, Philippines
+  Builds     : flood_simulation_25%.py  |  flood_simulation_50%.py  |
+               flood_simulation_75%.py
+================================================================================
+
+
+================================================================================
+1. INTRODUCTION
+================================================================================
+
+Jade Valley Subdivision is a residential community in Davao City, Philippines,
+situated in a low-lying terrain that is highly susceptible to flooding during
+heavy rainfall events and tropical cyclones. The area covers approximately
+326.44 hectares with elevations ranging from 2.00 m to 71.75 m above mean
+sea level, and a mean terrain elevation of 20.74 m. With 72.3% of the land
+classified as flat (slope < 5°), surface runoff accumulates rapidly during
+storm events, making the subdivision vulnerable to both pluvial flooding from
+direct rainfall and fluvial flooding from nearby river overflow.
+
+This system is an interactive, terrain-aware flood simulation developed as a
+final project to model flood behavior across Jade Valley Subdivision under
+various storm scenarios, from light rain to severe typhoon conditions. The
+simulation is built entirely in Python using rasterio, NumPy, SciPy, and
+Matplotlib, and operates on a GeoTIFF Digital Elevation Model (DEM) derived
+from 3D topographic survey data of the subdivision.
+
+The system is structured across three progressive simulation builds:
+
+  - flood_simulation_25%.py  — Baseline flood model with no mitigation
+  - flood_simulation_50%.py  — Baseline + 2 prevention measures
+                               (Riverbank Floodwall, Drainage Canal Network)
+  - flood_simulation_75%.py  — Baseline + 4 prevention measures
+                               (Floodwall, Canal, Retention Basin,
+                               Elevated Emergency Road)
+
+Each build is self-contained, fully interactive, and outputs animated
+visualizations plus time-series CSV data for further analysis.
+
+
+================================================================================
+2. PROBLEM DEFINITION
+================================================================================
+
+Davao City, located in Mindanao, Philippines, is among the most flood-prone
+urban centers in the country due to its proximity to river systems, high annual
+rainfall, and rapid urbanization of low-lying areas. Jade Valley Subdivision,
+a residential community within the city, exemplifies the compounding flood risk
+faced by such communities: flat terrain (72.3% of land at slope < 5°) limits
+natural drainage, while proximity to river channels exposes residents to both
+surface runoff accumulation and fluvial overflow during storm events.
+
+Despite these conditions, flood risk planning in residential subdivisions often
+lacks site-specific quantitative modeling. Without a terrain-accurate simulation,
+it is difficult to answer critical questions such as:
+
+  - Which specific zones within the subdivision flood first, and at what
+    rainfall threshold does inundation become critical?
+
+  - How far does river overflow spread across the subdivision during typhoon
+    events of varying intensities, and what is the expected water depth?
+
+  - How much flood extent and peak depth reduction can be achieved by
+    constructing physical flood prevention infrastructure — and which
+    combination of measures provides the best protection?
+
+  - Which areas can safely serve as evacuation zones during a 100-year
+    flood event?
+
+The absence of a dynamic, interactive flood model specific to Jade Valley
+Subdivision means that emergency preparedness decisions, infrastructure
+investments, and land use recommendations are made without direct evidence
+of how water moves across the terrain during actual storm conditions.
+
+This simulation system addresses that gap by providing a terrain-aware,
+scenario-driven flood model grounded in standard hydrological methods.
+It enables planners, researchers, and local stakeholders to visualize flood
+progression, evaluate the measurable impact of prevention measures, and
+identify risk zones with spatial precision — all derived from the actual
+topographic data of Jade Valley Subdivision.
+
+================================================================================
+3. SIMULATION OBJECTIVES
+================================================================================
+
+The simulation system is designed to meet the following objectives:
+
+  3.1  Terrain-Accurate Flood Inundation Modeling
+       Model realistic flood inundation behavior over the Jade Valley terrain
+       using physically-grounded hydrological methods (D8 flow routing,
+       Green-Ampt infiltration, BFS overflow dilation).
+
+  3.2  Multi-Scenario Storm Coverage
+       Simulate a range of PAGASA-calibrated storm scenarios — from Light Rain
+       (15 mm / 2 h) to Typhoon Signal 3 (400 mm / 18 h) — so that flood
+       risk can be assessed across multiple return periods.
+
+  3.3  Flood Risk Quantification and Zone Classification
+       Quantify flood risk across the subdivision using the HAND (Height Above
+       Nearest Drainage) model and classify land into five risk zones:
+       Very High, High, Medium, Low, and Safe.
+
+  3.4  Prevention Measure Effectiveness Evaluation
+       Evaluate the effectiveness of four flood prevention infrastructure
+       measures — Riverbank Floodwall, Drainage Canal Network, Retention Basin,
+       and Elevated Emergency Road — by running a parallel baseline simulation
+       and computing improvement deltas frame-by-frame.
+
+  3.5  Interactive Real-Time Visualization
+       Provide an interactive animated interface so that stakeholders can
+       visually observe flood progression, peak inundation areas, and the
+       impact of prevention measures in real time.
+
+  3.6  Data Export for Planning and Decision-Making
+       Export simulation results as GIF animations, time-series CSV files,
+       and static risk maps to support planning and disaster preparedness
+       decision-making.
+
+
+================================================================================
+4. SYSTEM DESCRIPTION
+================================================================================
+
+The Jade Valley Flood Simulation is a Python-based desktop application that
+combines terrain analysis, hydrological modeling, and interactive visualization
+into a single, self-contained system. It is organized into three progressive
+build levels, each adding physical flood prevention infrastructure on top of
+the previous baseline.
+
+  ── 4.1  Architecture Overview  ──────────────────────────────────────────────
+
+  The system follows a linear pipeline architecture with five logical layers:
+
+    [1] Data Layer
+          Reads the GeoTIFF DEM and JPEG satellite background from disk.
+          All terrain computations derive from the 57×61 elevation grid.
+
+    [2] Input Layer
+          A Tkinter GUI collects storm parameters and prevention measure
+          settings from the user before the simulation begins.
+
+    [3] Preprocessing Layer
+          Applies prevention measure DEM modifications, then runs the full
+          hydrological preprocessing pipeline (depression fill, D8 flow
+          direction, flow accumulation, slope, runoff coefficient,
+          infiltration capacity, bank elevation map).
+
+    [4] Simulation Engine
+          A frame-by-frame physics loop advances the flood state over time
+          using six operations per timestep: rainfall addition, water routing,
+          river overflow via BFS dilation, infiltration, and drainage.
+          A parallel baseline simulation runs simultaneously when prevention
+          measures are active, enabling direct comparison.
+
+    [5] Output Layer
+          Matplotlib renders a multi-layer animated visualization with a
+          live statistics panel and interactive playback controls. Results
+          are exportable as GIF animations and CSV time-series files.
+
+  ── 4.2  Build Levels  ───────────────────────────────────────────────────────
+
+  Build           Script                         Prevention Measures
+  ──────────────────────────────────────────────────────────────────────────────
+  25% Baseline    flood_simulation_25%.py         None
+                  Pure hydrological simulation; establishes the unmitigated
+                  flood behavior as the reference for comparison.
+
+  50% Build       flood_simulation_50%.py         2 measures
+                  Adds Riverbank Floodwall and Drainage Canal Network.
+                  Runs improved and baseline simulations in parallel and
+                  displays improvement deltas in the stats panel.
+
+  75% Build       flood_simulation_75%.py         4 measures
+                  Adds Retention Basin and Elevated Emergency Road on top
+                  of the 50% measures. Renders all four infrastructure
+                  overlays simultaneously on the animated map.
+
+  ── 4.3  Core Components  ────────────────────────────────────────────────────
+
+  Component                   Location / Role
+  ──────────────────────────────────────────────────────────────────────────────
+  load_dem()                  Reads GeoTIFF, fills NoData, returns (dem, cellsize)
+  _fill_depressions()         Priority-Flood sink removal
+  _d8_flow_direction()        Steepest-descent D8 routing
+  _flow_accumulation()        Topological-sort upstream count
+  build_stream_mask()         Identifies top-8% accumulation as river channel
+  apply_floodwall()           DEM modification — raises western bank cells
+  apply_drainage_canal()      DEM modification — lowers east/south corridors
+  apply_retention_basin()     DEM modification — excavates basin depression [75%]
+  apply_elevated_road()       DEM modification — raises emergency road berm [75%]
+  apply_prevention_measures() Combines all active measures into one modified DEM
+  FloodSimulation             Class — holds state, runs physics per timestep
+    .add_rainfall()             Applies runoff-weighted rainfall to grid
+    .route_water()              D8 diffusion of surface water (12 sub-iters)
+    .apply_river_overflow()     BFS dilation of flood front from river channel
+    .apply_infiltration()       Green-Ampt inspired soil absorption
+    .apply_drainage()           Channel and canal drainage removal
+    .step()                     Calls all five methods for one timestep
+  wind_rainfall_map()         Generates wind-modified spatial rainfall weights
+  run_simulation()            Orchestrates preprocessing, loop, and rendering
+  SimulationGUI               Tkinter two-tab GUI for user parameter input
+
+  ── 4.4  Data Flow Summary  ──────────────────────────────────────────────────
+
+  GeoTIFF DEM
+      │
+      ├─ Prevention measure DEM modifications (if enabled)
+      │
+      ├─ Hydrological preprocessing → fdir, accum, river_mask, slope,
+      │                                runoff_coeff, max_inf, bank_elev
+      │
+      ├─ [Improved Sim]  FloodSimulation(modified_dem)  ─┐
+      │                  frame loop × num_frames          ├─ Animation
+      └─ [Baseline Sim]  FloodSimulation(original_dem)  ─┘   + CSV Export
+
+
+================================================================================
+5. SYSTEM FLOW
+================================================================================
+
+The system executes in eight major stages from startup to output:
+
+  ────────────────────────────────────────────────────────────────────────────
+  STAGE 1 — Data Loading
+  ────────────────────────────────────────────────────────────────────────────
+  The script begins by loading the primary terrain data:
+
+    a) GeoTIFF DEM (JVS_Simulation.tif) loaded via rasterio
+         - Elevation read as float64 array (57 rows x 61 cols)
+         - NoData pixels replaced with nearest valid elevation (scipy EDT)
+         - Cell size derived in metres, corrected for geographic CRS via
+           cosine latitude scaling
+
+    b) JPEG satellite background (JVS_2D.jpg) loaded via Pillow
+         - Resized to max 2048 px on longest side for performance
+         - Used as the base visual layer in the animation
+
+  ────────────────────────────────────────────────────────────────────────────
+  STAGE 2 — User Input via Tkinter GUI
+  ────────────────────────────────────────────────────────────────────────────
+  A two-tab Tkinter GUI is presented to the user before the simulation runs:
+
+    Tab 1 — Storm Scenario
+      - Select preset storm (Scenarios 1–6) or Custom (Scenario 7)
+      - Sliders: Rainfall (mm), Duration (h), Timestep (min)
+      - Sliders: Wind Speed (km/h), Wind Direction (degrees)
+      - Sliders: Soil Saturation (%), Drainage Capacity (mm/hr)
+      - Rainfall Pattern selector: uniform / progressive / burst / decreasing
+      - Storm start time field (HH:MM)
+
+    Tab 2 — Prevention Measures (50% / 75% builds only)
+      - Toggle: Riverbank Floodwall  +  Wall Height slider (m)
+      - Toggle: Drainage Canal       +  Canal Depth slider (m)
+      - Toggle: Retention Basin      +  Basin Depth slider (m)   [75% only]
+      - Toggle: Elevated Emergency Road + Road Height slider (m)  [75% only]
+
+  On pressing RUN, the GUI closes and passes all parameters to run_simulation().
+
+  ────────────────────────────────────────────────────────────────────────────
+  STAGE 3 — DEM Modification (Prevention Measures)
+  ────────────────────────────────────────────────────────────────────────────
+  When any prevention measure is enabled, the original DEM is modified
+  BEFORE the simulation begins. Each measure physically alters elevation values
+  so that water genuinely responds to the infrastructure in the simulation:
+
+    Measure 1 — Riverbank Floodwall
+      Target: cells with elevation ≤ 6 m within 3-cell dilation of river
+      Action: raises those cells by wall_height_m (default 1.5 m)
+      Effect: blocks river overflow until water surface exceeds wall crest
+
+    Measure 2 — Drainage Canal Network
+      Canal A: lowers east-running corridor from row of lowest mean elevation
+               to eastern grid boundary (depth: default 2.0 m, min floor 0.3 m)
+      Canal B: lowers south-running corridor from peak flow accumulation column
+               to the southern boundary
+      Effect: provides fast drainage paths out of the residential core
+
+    Measure 3 — Retention Basin  [75% only]
+      Target: centroid of highest flow accumulation zone outside river channel
+      Action: excavates a circular depression covering 6% of grid area
+              to depth of (dem_cell − 6.0 m), minimum floor 0.5 m
+      Effect: stores peak runoff; reduces inundation depth downstream
+
+    Measure 4 — Elevated Emergency Road  [75% only]
+      Target: east-west corridor at ~45% row from grid top, skipping river
+      Action: raises corridor cells by road_height_m (default 1.5 m)
+      Effect: acts as a cross-subdivision berm; keeps emergency access dry
+
+  The original DEM is preserved as a pristine copy for the parallel baseline run.
+
+  ────────────────────────────────────────────────────────────────────────────
+  STAGE 4 — Hydrological Preprocessing
+  ────────────────────────────────────────────────────────────────────────────
+  Executed on the modified DEM (improved run) and separately on the original
+  DEM (baseline run):
+
+    a) Depression Filling — Priority-Flood algorithm (Barnes et al. 2014)
+         Removes artificial terrain sinks so flow paths are continuous.
+
+    b) D8 Flow Direction
+         Each cell is assigned to the steepest of its 8 neighbours.
+         Diagonal neighbours use Euclidean distance (sqrt(cell_w^2 + cell_h^2)).
+
+    c) Flow Accumulation — topological sort (high elevation to low)
+         Counts the total number of upstream cells draining into each cell.
+
+    d) Stream / River Mask
+         Cells in the top 8% of flow accumulation are classified as
+         active river channel cells.
+
+    e) Slope Computation
+         Computed as the gradient magnitude via numpy.gradient.
+
+    f) Runoff Coefficient (per cell)
+         runoff_coeff = clip(0.12 + 0.18 * slope_norm + 0.12 * scenario_factor,
+                             0.12, 0.85)
+         Higher slopes and more severe scenarios produce more surface runoff.
+
+    g) Infiltration Capacity (per cell)
+         max_inf = 1.2 + 1.2 * elev_norm * (1 - initial_saturation)
+                       - 0.7 * scenario_factor
+         Green-Ampt inspired; lower in high-saturation and low-elevation cells.
+
+    h) Bank Elevation Map
+         For each river cell, the minimum elevation among non-river neighbours
+         is recorded as the bank crest. The median of all valid bank crests
+         sets the base water surface elevation (flood_base_wse) for overflow.
+
+  ────────────────────────────────────────────────────────────────────────────
+  STAGE 5 — Per-Timestep Simulation Loop
+  ────────────────────────────────────────────────────────────────────────────
+  The loop runs for num_frames = ceil(duration_h / timestep_h) iterations.
+  At each timestep the following five physics operations execute in order:
+
+    Step 1 — Rainfall Intensity Factor
+      Scales the rainfall rate for this timestep by the storm pattern:
+        uniform     : constant 1.0 across all frames
+        progressive : ramps from 0.40 to 1.40 (storm development)
+        burst       : Gaussian peak centred at 45% of duration (0.30–1.80)
+        decreasing  : heavy start tapering to 0.20 (convective event)
+
+    Step 2 — add_rainfall()
+      rain_water += (rate_mmhr * dt_h * intensity / 1000) * runoff_coeff
+                    * wind_map
+      Wind map modifies spatial distribution of rainfall based on wind
+      speed and direction relative to terrain slope aspect.
+
+    Step 3 — route_water()  [12 sub-iterations]
+      D8 water surface diffusion over 8 neighbours.
+      Transfer fraction (tf) = clip(0.03 + 0.22 * slope_norm, 0.03, 0.35)
+      Flow capped at 20% of source cell's rain_water per sub-iteration.
+      Floodwall cells block cross-wall transfers unless water surface
+      exceeds wall crest by more than 2 cm.
+
+    Step 4 — apply_river_overflow()
+      - River level raised by rain_m * rise_multiplier
+      - rise_multiplier scales with rainfall accumulated and scenario severity
+      - Overflow suppressed below 30 mm accumulated rainfall
+      - Floodwall prevents overflow until river level > wall crest + 2 cm
+      - BFS dilation expands flood front into cells where terrain < effective
+        water surface elevation (WSE)
+        Hops: 1 (light) → 2 (moderate) → 2–4 (heavy) → 4 (typhoon)
+      - river_water updated in flooded land cells
+      - Canal cells receive 40% less river_water (drainage effect)
+
+    Step 5 — apply_infiltration()
+      Saturation increases each step:
+        sat_inc = min(0.12 * dt_h, 1 - saturation) * (0.5 + 0.5 * (1 - elev_norm))
+      Infiltration removes water:
+        inf_m = max_inf * (1 - saturation) / 1000 * dt_h
+        rain_water  -= inf_m
+        river_water -= inf_m * 0.5
+
+    Step 6 — apply_drainage()
+      Base rate: drainage_capacity * (1 - 0.45 * scenario_factor)
+      Channel cells drain at base + 80 * flow_weight^2 mm/hr
+      Canal cells drain 30x faster than base rate
+      Very shallow water (< 3–4 mm) decays at 60–65% per step
+
+    After all steps: snapshots of rain_water and river_water arrays are
+    appended to the frame list along with statistics.
+
+  ────────────────────────────────────────────────────────────────────────────
+  STAGE 6 — Parallel Baseline Run (50% / 75% with prevention active)
+  ────────────────────────────────────────────────────────────────────────────
+  When any prevention measure is enabled, an identical simulation is run on the
+  unmodified DEM with no prevention measures. Its flooded_pct and max_depth_mm
+  are stored per frame so the stats panel can display improvement deltas.
+
+  ────────────────────────────────────────────────────────────────────────────
+  STAGE 7 — Animation Rendering (Matplotlib)
+  ────────────────────────────────────────────────────────────────────────────
+  Five visual layers are composited per frame:
+
+    Layer 1 — JPEG satellite background (fallback: greyscale elevation shading)
+    Layer 2 — River channel band (blue tint overlay on stream cells)
+    Layer 3 — Rain accumulation depth (transparent cyan → orange → red)
+    Layer 4 — River overflow depth (transparent → solid dark blue)
+    Layer 5 — Infrastructure overlays:
+               Red    — Riverbank Floodwall cells
+               Cyan   — Drainage Canal cells
+               Green  — Retention Basin cells  [75% only]
+               Orange — Elevated Emergency Road cells  [75% only]
+
+  Live stats panel displays per frame:
+    - Accumulated rainfall (mm)
+    - Flooded area (% of grid)
+    - River overflow area (%)
+    - Maximum water depth (mm)
+    - Baseline vs. improved delta  (when prevention is active)
+
+  Playback controls: Play/Pause  |  Frame scrubber  |  Speed slider  |
+                     Step forward / Step backward
+
+  ────────────────────────────────────────────────────────────────────────────
+  STAGE 8 — Output Export
+  ────────────────────────────────────────────────────────────────────────────
+    Results/animations/
+      [scenario]_[timestamp].gif         — exported animation (all frames)
+
+    Results/data/
+      sim_[scenario]_BASELINE.csv        — time-series: time, rain_mm,
+                                           flooded_pct, river_pct, max_depth_mm
+      sim_[scenario]_WITH_PREVENTION.csv — same, for prevention run
+      dem_processed.npy                  — processed DEM array
+      flow_accumulation.npy              — flow accumulation grid
+      hand_model.npy                     — HAND values per cell
+      slope.npy                          — slope magnitude grid
+      risk_map.npy                       — 5-class risk zone grid
+      flood_risk_report.txt              — HAND-based risk assessment report
+      flood_statistics.json              — return-period scenario statistics
+
+    Results/maps/
+      [static risk zone and flood maps]
+
+
+================================================================================
+6. SYSTEM VARIABLES
+================================================================================
+
+  ── 6.1  USER INPUT VARIABLES (GUI)  ─────────────────────────────────────────
+
+  Variable            Type     Default   Range / Options         Description
+  ──────────────────────────────────────────────────────────────────────────────
+  rainfall_mm         float    90.0      0–600 mm                Total storm rainfall
+  duration_h          float    4.0       0.5–24.0 h              Storm duration
+  timestep_min        int      10        1–60 min                Simulation timestep
+  wind_speed          float    0.0       0–200 km/h              Wind speed
+  wind_dir            float    0.0       0–360 degrees           Wind direction
+  soil_sat_pct        float    30.0      0–100 %                 Initial soil saturation
+  drain_cap           float    5.0       0–30 mm/hr              Baseline drainage capacity
+  pattern             str      prog.     uniform / progressive   Rainfall intensity pattern
+                                         burst / decreasing
+  start_time_str      str      "14:00"   HH:MM format            Clock time at frame 0
+
+  ── 6.2  PREVENTION MEASURE VARIABLES (50% / 75% builds)  ────────────────────
+
+  Variable            Type     Default   Range             Description
+  ──────────────────────────────────────────────────────────────────────────────
+  use_floodwall       bool     False     True / False      Enable Riverbank Floodwall
+  wall_height_m       float    1.5       0.5–5.0 m         Wall crest height above terrain
+  use_canal           bool     False     True / False      Enable Drainage Canal Network
+  canal_depth_m       float    2.0       0.5–5.0 m         Canal excavation depth
+  use_basin           bool     False     True / False      Enable Retention Basin [75%]
+  basin_depth_m       float    6.0       2.0–10.0 m        Basin excavation depth [75%]
+  use_road            bool     False     True / False      Enable Elevated Emergency Road [75%]
+  road_height_m       float    1.5       0.5–3.0 m         Road raise above terrain [75%]
+
+  ── 6.3  TERRAIN / PREPROCESSED VARIABLES  ───────────────────────────────────
+
+  Variable            Shape          Description
+  ──────────────────────────────────────────────────────────────────────────────
+  dem_raw             (57, 61)       Raw loaded DEM elevation (m)
+  dem                 (57, 61)       Depression-filled DEM used for routing
+  cellsize            float          Grid cell size in metres (≈ 30.64 m)
+  fdir                (57, 61) int8  D8 flow direction index (0–7)
+  accum               (57, 61) f32   Flow accumulation (upstream cell count)
+  streams             (57, 61) bool  True where accum ≥ 92nd percentile
+  river_mask          (57, 61) bool  Active river channel cells (top 8% accum)
+  slope               (57, 61) f64   Terrain slope magnitude (m/m)
+  elev_norm           (57, 61) f64   Elevation normalised to [0, 1]
+  flow_weight         (57, 61) f64   Log-normalised flow accumulation [0, 1]
+  runoff_coeff        (57, 61) f64   Fraction of rain becoming surface flow
+  max_inf             (57, 61) f64   Maximum infiltration capacity (mm/step)
+  bank_elev           (57, 61) f64   Bank crest elevation per river cell (m)
+  flood_base_wse      float          Median bank elevation = base overflow WSE
+  river_dist          (57, 61) f64   Distance-to-river transform (cells)
+
+  ── 6.4  SIMULATION STATE VARIABLES  ─────────────────────────────────────────
+
+  Variable               Shape       Description
+  ──────────────────────────────────────────────────────────────────────────────
+  rain_water             (57, 61)    Water depth from surface runoff (m)
+  river_water            (57, 61)    Water depth from river overflow (m)
+  water_depth            (57, 61)    rain_water + river_water  (property)
+  river_level            (57, 61)    Current river water surface elevation (m)
+  river_level_init       (57, 61)    Initial river level (bank elevation)
+  bfs_front              (57, 61)    Boolean flood front (BFS expansion mask)
+  saturation             (57, 61)    Soil moisture saturation [0.0 – 1.0]
+  rainfall_accumulated   float       Total rainfall added so far (m)
+
+  ── 6.5  PREVENTION INFRASTRUCTURE MASKS  ────────────────────────────────────
+
+  Variable            Shape          Description
+  ──────────────────────────────────────────────────────────────────────────────
+  wall_mask           (57, 61) bool  True on raised floodwall cells
+  canal_mask          (57, 61) bool  True on lowered canal cells
+  basin_mask          (57, 61) bool  True on excavated retention basin cells
+  road_mask           (57, 61) bool  True on elevated road cells
+
+  ── 6.6  STORM SCENARIO PRESETS  ─────────────────────────────────────────────
+
+  ID  Name                              Rainfall   Duration   Pattern
+  ──────────────────────────────────────────────────────────────────────────────
+   1  Light Rain                          15 mm      2.0 h    uniform
+   2  Moderate Rain                       36 mm      3.0 h    progressive
+   3  Heavy Rain                          90 mm      4.0 h    progressive
+   4  Typhoon Signal 1 (Trop. Depression) 150 mm     8.0 h    progressive
+   5  Typhoon Signal 2 (Tropical Storm)   250 mm    12.0 h    burst
+   6  Typhoon Signal 3 (Severe Typhoon)   400 mm    18.0 h    burst
+   7  Custom                             user def   user def  user def
+
+
+================================================================================
+7. ASSUMPTIONS
+================================================================================
+
+The following assumptions and simplifications govern the simulation model:
+
+  5.1  Single-Direction Flow (D8)
+       Each terrain cell routes water to exactly one of its eight neighbours
+       (the steepest descent). Real flow may divide across multiple paths;
+       this is an accepted simplification standard in raster hydrology.
+
+  5.2  Static DEM
+       The DEM does not change during the simulation. Erosion, sedimentation,
+       and structural collapse are not modeled. Prevention measure modifications
+       are applied once before the simulation starts and remain fixed.
+
+  5.3  Uniform Soil Properties
+       Initial soil saturation is spatially uniform (user-specified %). The
+       infiltration capacity model uses elevation as a proxy for soil drainage
+       class. In reality, Davao City soils vary spatially in texture, porosity,
+       and hydraulic conductivity.
+
+  5.4  Green-Ampt Simplified Infiltration
+       The infiltration model is inspired by Green-Ampt but is a simplified
+       scalar approximation. Capillary suction head, wetting front, and
+       detailed soil hydraulics are not explicitly computed.
+
+  5.5  BFS River Overflow Approximation
+       River overflow spreading uses BFS (Breadth-First Search) dilation rather
+       than a full shallow-water equation solver. This is computationally
+       efficient and visually representative but does not model wave celerity,
+       backwater effects, or momentum.
+
+  5.6  Instantaneous Prevention Measure Deployment
+       All prevention measures are fully constructed and effective from
+       timestep 0. Construction time, soil settlement, and partial effectiveness
+       during construction are not modeled.
+
+  5.7  No Groundwater Interaction
+       Subsurface flow, groundwater table rise, and sewer system interactions
+       are not included. The model is a surface hydrology simulation only.
+
+  5.8  Wind Uniformity
+       Wind speed and direction are assumed constant throughout the storm
+       duration. Spatial variation in wind field is not modeled.
+
+  5.9  PAGASA Rainfall Classification
+       Storm scenarios are calibrated to PAGASA (Philippine Atmospheric,
+       Geophysical and Astronomical Services Administration) rainfall intensity
+       classifications as applied to Mindanao / Davao City conditions.
+
+  5.10 Retention Basin Instantaneous Fill
+       The retention basin stores water immediately as it is excavated in the
+       DEM. Real basin effectiveness depends on inlet design, spillways, and
+       outlet control structures which are not explicitly modeled.
+
+  5.11 Grid Resolution
+       The DEM grid is 57 x 61 cells at ~30.64 m per cell. Features smaller
+       than one cell (roads, buildings, drainage pipes) are sub-grid and
+       their effects are approximated through the runoff coefficient and
+       drainage capacity parameters.
+
+
+================================================================================
+8. SIMULATION SETUP
+================================================================================
+
+  ── 8.1  Software Requirements  ──────────────────────────────────────────────
+
+  Python Version  : 3.10 or higher
+  Virtual Env     : .venv (located in project root)
+
+  Required Packages (from requirements.txt):
+    numpy          — Array computation and terrain operations
+    scipy          — Binary dilation, distance transform, Gaussian smoothing
+    matplotlib     — Animation rendering and interactive figure controls
+    rasterio       — GeoTIFF DEM loading and CRS handling
+    Pillow         — JPEG background image loading and resizing
+    ezdxf          — DXF topographic file parsing (2D/3D vector maps)
+    pysheds        — Supplementary hydrological preprocessing
+    pandas         — CSV export and data manipulation
+
+  Install dependencies:
+    cd "Final Project (Simulation)"
+    .venv\Scripts\activate
+    pip install -r Main/requirements.txt
+
+  ── 8.2  Required Input Files  ───────────────────────────────────────────────
+
+  File                                          Required By
+  ──────────────────────────────────────────────────────────────────────────────
+  Map Topography/3D/JVS_Simulation.tif          All builds (mandatory DEM)
+  Map Topography/2D/JVS_2D.jpg                  All builds (background image)
+  Map Topography/2D/Jade_Valley_..._2D_vectorial.dxf   Optional (vector overlay)
+  Map Topography/3D/Jade_Valley_..._3D_modeling.dxf    Optional (3D reference)
+
+  ── 8.3  Running the Simulation  ─────────────────────────────────────────────
+
+  Baseline (no prevention measures):
+    python "Main/flood_simulation_25%.py"
+
+  With 2 prevention measures (Floodwall + Drainage Canal):
+    python "Main/flood_simulation_50%.py"
+
+  With 4 prevention measures (Floodwall + Canal + Basin + Road):
+    python "Main/flood_simulation_75%.py"
+
+  ── 8.4  GUI Operation Sequence  ─────────────────────────────────────────────
+
+  Step 1  Select a storm preset from the dropdown (Scenarios 1–6) or
+          choose Custom (Scenario 7) and manually enter rainfall and duration.
+
+  Step 2  Adjust optional sliders as needed:
+            Timestep, Wind Speed/Direction, Soil Saturation, Drainage Capacity.
+
+  Step 3  (50% / 75% only) Switch to the Prevention Measures tab.
+            Toggle the desired measures ON and adjust their parameters.
+
+  Step 4  Click RUN. The GUI closes, preprocessing begins in the console,
+          and the animated figure window opens automatically.
+
+  Step 5  Use the playback controls:
+            Play/Pause   — start or freeze the animation
+            Frame slider — scrub to any timestep
+            Speed slider — adjust playback FPS
+            < / >        — step one frame backward / forward
+
+  Step 6  Click SAVE GIF to export the animation to Results/animations/.
+          Click SAVE CSV to export the time-series data to Results/data/.
+
+  ── 8.5  Output Directory Structure  ─────────────────────────────────────────
+
+  Results/
+    animations/    — GIF files for each simulation run
+    data/          — CSV time-series, .npy terrain arrays,
+                     flood_risk_report.txt, flood_statistics.json
+    maps/          — Static risk zone and HAND model map images
+
+  ── 8.6  Key Numerical Configuration  ────────────────────────────────────────
+
+  DEM Grid                  : 57 rows × 61 cols
+  Cell Size                 : 30.64 m
+  Total Study Area          : 326.44 ha
+  Elevation Range           : 2.00 m – 71.75 m
+  Mean Elevation            : 20.74 m
+  Mean Slope                : 4.3°
+  Stream Threshold          : Top 8% of flow accumulation (92nd percentile)
+  HAND Smooth Sigma         : 0.5 (Gaussian, applied before preprocessing)
+  Curve Number              : 85 (urban mix reference for SCS-CN context)
+  Infiltration Sub-steps    : 12 routing iterations per timestep
+  River Overflow BFS Hops   : 1 (light) up to 4–6 (typhoon) per timestep
+
+
+================================================================================
+9. CONCLUSION
+================================================================================
+
+The Jade Valley Flood Simulation system successfully models the hydrological
+behavior of a real-world residential subdivision in Davao City under a full
+spectrum of storm conditions relevant to the Philippine context. By combining
+D8 terrain-based flow routing, scenario-adaptive river overflow via BFS
+dilation, and Green-Ampt inspired infiltration, the simulation captures the
+essential dynamics of urban flooding at a computationally accessible scale.
+
+Key findings from the pre-computed HAND risk assessment confirm that the
+subdivision faces genuine flood risk:
+
+  - 8.2%  of the area (26.66 ha) is classified Very High Risk
+    and will flood under Heavy Rain (≥ 90 mm) conditions.
+  - 9.7%  (31.83 ha) is High Risk, flooding at Typhoon Signal 1 (≥ 150 mm).
+  - 9.9%  (32.30 ha) is Medium Risk, flooding at Typhoon Signal 2 (≥ 250 mm).
+  - 11.0% (35.86 ha) is Low Risk, flooding only in extreme Sig 3 events.
+  - 53.6% (174.81 ha) is classified as Safe Zone, suitable for use as an
+    evacuation destination during flood events.
+
+Return-period analysis shows that a 100-year flood event would inundate
+35.5% (115.76 ha) of the subdivision to a mean depth of 4.12 m, underscoring
+the severity of the risk and the importance of mitigation infrastructure.
+
+The three-build simulation architecture allows direct, frame-by-frame
+comparison of flood extent and depth with and without prevention measures.
+The results demonstrate that:
+
+  - The Riverbank Floodwall effectively delays and reduces river overflow into
+    the residential core by requiring water to overtop the raised crest before
+    spreading onto adjacent land.
+
+  - The Drainage Canal Network accelerates runoff evacuation from the
+    flood-prone central zone, reducing peak rain_water accumulation in areas
+    that would otherwise be slow to drain.
+
+  - The Retention Basin (75% build) provides the most significant reduction
+    in peak inundation depth by storing excess floodwater at the subdivision's
+    primary topographic sink before it spreads over residential land.
+
+  - The Elevated Emergency Road (75% build) maintains critical cross-
+    subdivision access for emergency vehicles even at design flood level,
+    while its berm effect deflects surface flow laterally rather than allowing
+    it to pool freely in the central zone.
+
+Together, the four prevention measures in the 75% build represent a layered
+flood risk reduction strategy aligned with the nature of the terrain and the
+hydrology of the site. This simulation provides a quantitative and visual
+basis for infrastructure planning, community disaster preparedness, and
+policy recommendation for flood-vulnerable residential areas such as
+Jade Valley Subdivision.
+
+================================================================================
+  END OF DOCUMENTATION
+================================================================================
