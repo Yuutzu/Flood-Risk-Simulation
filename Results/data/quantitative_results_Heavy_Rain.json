@@ -1,0 +1,31 @@
+{
+  "scenario_name": "Heavy Rain",
+  "rainfall_mm": 90.0,
+  "duration_min": 240,
+  "prevention": "Floodwall +2.0m",
+  "prevention_run": {
+    "peak_flooded_pct": 35.81,
+    "peak_flooded_ha": 116.89,
+    "peak_max_depth_mm": 1554.8,
+    "peak_river_overflow_pct": 30.77,
+    "time_to_peak_flood_min": 230,
+    "time_to_peak_depth_min": 230,
+    "flood_exposure_ha_hours": 207.63
+  },
+  "baseline_run": {
+    "peak_flooded_pct": 38.57,
+    "peak_flooded_ha": 125.9,
+    "peak_max_depth_mm": 1554.0,
+    "time_to_peak_flood_min": 230,
+    "flood_exposure_ha_hours": 230.36
+  },
+  "improvement": {
+    "extent_reduction_ha": 9.01,
+    "extent_reduction_pct": 2.76,
+    "extent_reduction_rel_pct": 7.2,
+    "depth_reduction_mm": -0.7,
+    "depth_reduction_rel_pct": -0.0,
+    "time_to_peak_shift_min": 0,
+    "exposure_reduction_ha_hours": 22.74
+  }
+}

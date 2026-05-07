@@ -1,0 +1,39 @@
+============================================================================
+  QUANTITATIVE RESULTS — JADE VALLEY FLOOD SIMULATION
+============================================================================
+  Generated  : 2026-05-07 11:00:37
+  Scenario   : Heavy Rain
+  Rainfall   : 90 mm over 240 min
+  Prevention : Floodwall +2.0m
+
+----------------------------------------------------------------------------
+  Peak flood metrics  (run with prevention applied)
+----------------------------------------------------------------------------
+  Peak flood extent       :   116.89 ha   (35.81 %)
+  Peak maximum depth      :   1554.8 mm
+  Peak river overflow     :    30.77 %
+  Time to peak extent     :      230 min
+  Time to peak depth      :      230 min
+  Flood exposure integral :   207.63 ha-hours
+
+----------------------------------------------------------------------------
+  Baseline metrics  (same scenario, no prevention)
+----------------------------------------------------------------------------
+  Peak flood extent       :   125.90 ha   (38.57 %)
+  Peak maximum depth      :   1554.0 mm
+  Time to peak extent     :      230 min
+  Flood exposure integral :   230.36 ha-hours
+
+----------------------------------------------------------------------------
+  Improvement from prevention measures
+----------------------------------------------------------------------------
+  Extent reduction        :     9.01 ha   (+7.2 % relative)
+  Depth reduction         :     -0.7 mm  (-0.0 % relative)
+  Time-to-peak shift      :       +0 min  (positive = peak delayed)
+  Exposure reduction      :    22.74 ha-hours
+
+============================================================================
+  Files written:
+    C:\Users\lacro\OneDrive\Desktop\Final Project (Simulation)\Results\data\quantitative_results_Heavy_Rain.txt
+    C:\Users\lacro\OneDrive\Desktop\Final Project (Simulation)\Results\data\quantitative_results_Heavy_Rain.json
+============================================================================

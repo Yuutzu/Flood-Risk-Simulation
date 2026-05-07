@@ -40,6 +40,7 @@
 import csv
 import heapq
 import io
+import json
 import os
 import random
 import sys
@@ -1018,6 +1019,370 @@ def _intensity_factor(frame: int, total_frames: int, pattern: str) -> float:
     return 1.0
 
 # =============================================================================
+#  RESULTS ANALYSIS MODULE  (drop-in addition for flood_simulation_75%.py)
+# -----------------------------------------------------------------------------
+#  Adds three academic-grade upgrades to the 75% build:
+#    A. Quantitative Results Table  — peak flood metrics, baseline vs. prevention
+#    B. Sensitivity Analysis        — sweeps a single parameter to show effect
+#    C. Validation Hook             — compares simulation extent to a reference
+#                                     event (e.g. Typhoon Pablo 2012)
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# A.  QUANTITATIVE RESULTS TABLE
+# -----------------------------------------------------------------------------
+def compute_quantitative_results(scenario_name, rainfall_mm, stats, base_stats,
+                                 prevention_str, num_frames, timestep_min,
+                                 out_dir):
+    """
+    Compute peak flood metrics and write a quantitative results table.
+
+    Produces:
+      Results/data/quantitative_results_<scenario>.txt   (human-readable)
+      Results/data/quantitative_results_<scenario>.json  (machine-readable)
+    """
+    CELL_HA = 30.64 ** 2 / 10_000.0
+    GRID_HA = 326.44
+
+    dt_h = timestep_min / 60.0
+
+    def _peak(series):
+        arr = np.asarray(series, dtype=float)
+        if arr.size == 0:
+            return 0.0, 0, 0.0
+        idx = int(np.argmax(arr))
+        return float(arr[idx]), idx, idx * timestep_min
+
+    def _hh_integral(flooded_pct_series):
+        arr = np.asarray(flooded_pct_series, dtype=float)
+        area_ha = (arr / 100.0) * GRID_HA
+        return float(np.sum(area_ha) * dt_h)
+
+    peak_flood_pct, peak_flood_fr, peak_flood_min = _peak(stats["flooded_pct"])
+    peak_depth_mm,  peak_depth_fr, peak_depth_min = _peak(stats["max_depth_mm"])
+    peak_river_pct, _, _ = _peak(stats["river_pct"])
+    peak_flood_ha = peak_flood_pct / 100.0 * GRID_HA
+    flood_hh = _hh_integral(stats["flooded_pct"])
+
+    rows = {
+        "scenario_name": scenario_name,
+        "rainfall_mm": rainfall_mm,
+        "duration_min": num_frames * timestep_min,
+        "prevention": prevention_str,
+        "prevention_run": {
+            "peak_flooded_pct":        round(peak_flood_pct, 2),
+            "peak_flooded_ha":         round(peak_flood_ha, 2),
+            "peak_max_depth_mm":       round(peak_depth_mm, 1),
+            "peak_river_overflow_pct": round(peak_river_pct, 2),
+            "time_to_peak_flood_min":  peak_flood_min,
+            "time_to_peak_depth_min":  peak_depth_min,
+            "flood_exposure_ha_hours": round(flood_hh, 2),
+        },
+    }
+
+    if base_stats is not None and len(base_stats.get("flooded_pct", [])) > 0:
+        b_peak_flood_pct, _, b_peak_flood_min = _peak(base_stats["flooded_pct"])
+        b_peak_depth_mm,  _, b_peak_depth_min = _peak(base_stats["max_depth_mm"])
+        b_peak_flood_ha = b_peak_flood_pct / 100.0 * GRID_HA
+        b_flood_hh = _hh_integral(base_stats["flooded_pct"])
+
+        d_flood_pct  = b_peak_flood_pct - peak_flood_pct
+        d_flood_ha   = b_peak_flood_ha  - peak_flood_ha
+        d_depth_mm   = b_peak_depth_mm  - peak_depth_mm
+        d_time_peak  = peak_flood_min   - b_peak_flood_min
+        d_flood_hh   = b_flood_hh       - flood_hh
+
+        d_flood_pct_rel = (d_flood_pct / b_peak_flood_pct * 100.0
+                           if b_peak_flood_pct > 0 else 0.0)
+        d_depth_rel     = (d_depth_mm / b_peak_depth_mm * 100.0
+                           if b_peak_depth_mm > 0 else 0.0)
+
+        rows["baseline_run"] = {
+            "peak_flooded_pct":        round(b_peak_flood_pct, 2),
+            "peak_flooded_ha":         round(b_peak_flood_ha, 2),
+            "peak_max_depth_mm":       round(b_peak_depth_mm, 1),
+            "time_to_peak_flood_min":  b_peak_flood_min,
+            "flood_exposure_ha_hours": round(b_flood_hh, 2),
+        }
+        rows["improvement"] = {
+            "extent_reduction_ha":         round(d_flood_ha, 2),
+            "extent_reduction_pct":        round(d_flood_pct, 2),
+            "extent_reduction_rel_pct":    round(d_flood_pct_rel, 1),
+            "depth_reduction_mm":          round(d_depth_mm, 1),
+            "depth_reduction_rel_pct":     round(d_depth_rel, 1),
+            "time_to_peak_shift_min":      d_time_peak,
+            "exposure_reduction_ha_hours": round(d_flood_hh, 2),
+        }
+
+    safe = scenario_name.replace(' ', '_').replace('/', '-').replace('(', '').replace(')', '')
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    class _NumpyEncoder(json.JSONEncoder):
+        def default(self, o):
+            if isinstance(o, (np.integer,)):
+                return int(o)
+            if isinstance(o, (np.floating,)):
+                return float(o)
+            if isinstance(o, np.ndarray):
+                return o.tolist()
+            return super().default(o)
+
+    json_path = out_dir / f"quantitative_results_{safe}.json"
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(rows, f, indent=2, cls=_NumpyEncoder)
+
+    txt_path = out_dir / f"quantitative_results_{safe}.txt"
+    lines = []
+    lines.append("=" * 76)
+    lines.append("  QUANTITATIVE RESULTS — JADE VALLEY FLOOD SIMULATION")
+    lines.append("=" * 76)
+    lines.append(f"  Generated  : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append(f"  Scenario   : {scenario_name}")
+    lines.append(f"  Rainfall   : {rainfall_mm:.0f} mm over {num_frames * timestep_min} min")
+    lines.append(f"  Prevention : {prevention_str}")
+    lines.append("")
+    lines.append("-" * 76)
+    lines.append("  Peak flood metrics  (run with prevention applied)")
+    lines.append("-" * 76)
+    pr = rows["prevention_run"]
+    lines.append(f"  Peak flood extent       : {pr['peak_flooded_ha']:>8.2f} ha   "
+                 f"({pr['peak_flooded_pct']:.2f} %)")
+    lines.append(f"  Peak maximum depth      : {pr['peak_max_depth_mm']:>8.1f} mm")
+    lines.append(f"  Peak river overflow     : {pr['peak_river_overflow_pct']:>8.2f} %")
+    lines.append(f"  Time to peak extent     : {pr['time_to_peak_flood_min']:>8.0f} min")
+    lines.append(f"  Time to peak depth      : {pr['time_to_peak_depth_min']:>8.0f} min")
+    lines.append(f"  Flood exposure integral : {pr['flood_exposure_ha_hours']:>8.2f} ha-hours")
+
+    if "baseline_run" in rows:
+        b = rows["baseline_run"]
+        d = rows["improvement"]
+        lines.append("")
+        lines.append("-" * 76)
+        lines.append("  Baseline metrics  (same scenario, no prevention)")
+        lines.append("-" * 76)
+        lines.append(f"  Peak flood extent       : {b['peak_flooded_ha']:>8.2f} ha   "
+                     f"({b['peak_flooded_pct']:.2f} %)")
+        lines.append(f"  Peak maximum depth      : {b['peak_max_depth_mm']:>8.1f} mm")
+        lines.append(f"  Time to peak extent     : {b['time_to_peak_flood_min']:>8.0f} min")
+        lines.append(f"  Flood exposure integral : {b['flood_exposure_ha_hours']:>8.2f} ha-hours")
+        lines.append("")
+        lines.append("-" * 76)
+        lines.append("  Improvement from prevention measures")
+        lines.append("-" * 76)
+        lines.append(f"  Extent reduction        : {d['extent_reduction_ha']:>8.2f} ha   "
+                     f"({d['extent_reduction_rel_pct']:+.1f} % relative)")
+        lines.append(f"  Depth reduction         : {d['depth_reduction_mm']:>8.1f} mm  "
+                     f"({d['depth_reduction_rel_pct']:+.1f} % relative)")
+        lines.append(f"  Time-to-peak shift      : {d['time_to_peak_shift_min']:>+8.0f} min  "
+                     f"(positive = peak delayed)")
+        lines.append(f"  Exposure reduction      : {d['exposure_reduction_ha_hours']:>8.2f} ha-hours")
+
+    lines.append("")
+    lines.append("=" * 76)
+    lines.append(f"  Files written:")
+    lines.append(f"    {txt_path}")
+    lines.append(f"    {json_path}")
+    lines.append("=" * 76)
+
+    txt_content = "\n".join(lines)
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write(txt_content)
+
+    print()
+    print(txt_content)
+    return rows
+
+
+# -----------------------------------------------------------------------------
+# B.  SENSITIVITY ANALYSIS
+# -----------------------------------------------------------------------------
+def run_sensitivity_analysis(parameter, values, base_kwargs, out_dir,
+                             run_simulation_fn):
+    """
+    Run the simulation N times, varying one parameter, and tabulate how
+    the output responds.
+
+    Parameters
+    ----------
+    parameter : str
+        Name of the run_simulation kwarg to sweep (e.g. 'soil_sat_pct').
+    values : list[float]
+        The values to test for that parameter.
+    base_kwargs : dict
+        All other run_simulation kwargs held constant.
+    out_dir : Path
+        Directory to write the results CSV (typically DATA_OUT).
+    run_simulation_fn : callable
+        The run_simulation function from this script.
+    """
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    csv_path = out_dir / f"sensitivity_{parameter}.csv"
+    sens_rows = []
+
+    print()
+    print("=" * 76)
+    print(f"  SENSITIVITY ANALYSIS — varying {parameter}")
+    print(f"  Values      : {values}")
+    print(f"  Other params: {base_kwargs}")
+    print("=" * 76)
+
+    for v in values:
+        kwargs = dict(base_kwargs)
+        kwargs[parameter] = v
+        print(f"\n  >>> {parameter} = {v}")
+        result = run_simulation_fn(**kwargs)
+        if isinstance(result, dict) and "flooded_pct" in result:
+            peak_flooded  = max(result["flooded_pct"])
+            peak_depth    = max(result["max_depth_mm"])
+            peak_flood_ha = peak_flooded / 100.0 * 326.44
+        else:
+            peak_flooded = peak_depth = peak_flood_ha = float("nan")
+
+        sens_rows.append({
+            parameter:           v,
+            "peak_flooded_pct":  round(peak_flooded, 2),
+            "peak_flooded_ha":   round(peak_flood_ha, 2),
+            "peak_depth_mm":     round(peak_depth, 1),
+        })
+
+    with open(csv_path, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(sens_rows[0].keys()))
+        w.writeheader()
+        w.writerows(sens_rows)
+
+    arr_in  = np.array([r[parameter]          for r in sens_rows], dtype=float)
+    arr_pct = np.array([r["peak_flooded_pct"] for r in sens_rows], dtype=float)
+    arr_dep = np.array([r["peak_depth_mm"]    for r in sens_rows], dtype=float)
+
+    in_range          = arr_in.max() - arr_in.min() if arr_in.size > 1 else 1.0
+    flood_sensitivity = (arr_pct.max() - arr_pct.min()) / in_range if in_range else 0.0
+    depth_sensitivity = (arr_dep.max() - arr_dep.min()) / in_range if in_range else 0.0
+
+    print()
+    print("-" * 76)
+    print(f"  Sensitivity summary")
+    print("-" * 76)
+    print(f"  Output range (peak flooded %)  : {arr_pct.min():.2f} → {arr_pct.max():.2f}")
+    print(f"  Output range (peak depth mm)   : {arr_dep.min():.1f} → {arr_dep.max():.1f}")
+    print(f"  Flood-pct sensitivity (Δ%/Δ{parameter}): {flood_sensitivity:.4f}")
+    print(f"  Depth-mm  sensitivity (Δmm/Δ{parameter}): {depth_sensitivity:.4f}")
+    print(f"  CSV saved to: {csv_path}")
+    print("=" * 76)
+
+    return sens_rows
+
+
+# -----------------------------------------------------------------------------
+# C.  VALIDATION HOOK — Compare to a reference event
+# -----------------------------------------------------------------------------
+REFERENCE_EVENTS = {
+    "Typhoon Pablo 2012": {
+        "rainfall_mm": 192,
+        "duration_h": 18.0,
+        "pattern": "burst",
+        "observed_flooded_pct": None,
+        "observed_max_depth_mm": None,
+        "notes": "Severe Typhoon (Bopha). Catastrophic for Mindanao; estimated 200 mm "
+                 "in 24 h over Davao Region. Use this for high-end validation.",
+    },
+    "Typhoon Odette 2021": {
+        "rainfall_mm": 130,
+        "duration_h": 12.0,
+        "pattern": "burst",
+        "observed_flooded_pct": None,
+        "observed_max_depth_mm": None,
+        "notes": "Typhoon Rai/Odette. Extensive flooding reported across Davao. "
+                 "Substitute observed values from local barangay reports.",
+    },
+    "Habagat Heavy Rain Episode": {
+        "rainfall_mm": 90,
+        "duration_h": 4.0,
+        "pattern": "progressive",
+        "observed_flooded_pct": None,
+        "observed_max_depth_mm": None,
+        "notes": "Use this slot for any documented heavy rain event with good photos.",
+    },
+}
+
+
+def validate_against_event(event_name, simulated_peak_flooded_pct,
+                           simulated_peak_depth_mm, out_dir):
+    """
+    Compare the simulation's peak metrics against an observed reference event.
+    Writes a validation report to Results/data/validation_<event>.txt.
+
+    To use:
+      1. Run the simulation with the rainfall/duration of the chosen event.
+      2. Capture peak_flooded_pct and peak_max_depth_mm from the run.
+      3. Call this function with those numbers.
+    """
+    if event_name not in REFERENCE_EVENTS:
+        raise ValueError(f"Unknown event: {event_name}. "
+                         f"Available: {list(REFERENCE_EVENTS.keys())}")
+    ref = REFERENCE_EVENTS[event_name]
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    errors = {}
+    rating = "Not rated (no observed data on file)"
+    if ref["observed_flooded_pct"] is not None:
+        err_pct = abs(simulated_peak_flooded_pct - ref["observed_flooded_pct"])
+        errors["flooded_pct_abs_error"] = round(err_pct, 2)
+        if err_pct < 5:    rating = "Strong agreement (< 5 % absolute)"
+        elif err_pct < 10: rating = "Acceptable agreement (< 10 %)"
+        elif err_pct < 20: rating = "Marginal agreement (< 20 %)"
+        else:              rating = "Poor agreement (≥ 20 %)"
+
+    if ref["observed_max_depth_mm"] is not None:
+        err_dep = abs(simulated_peak_depth_mm - ref["observed_max_depth_mm"])
+        errors["max_depth_mm_abs_error"] = round(err_dep, 1)
+
+    safe = event_name.replace(' ', '_').replace('/', '-')
+    txt_path = out_dir / f"validation_{safe}.txt"
+    lines = []
+    lines.append("=" * 76)
+    lines.append(f"  VALIDATION REPORT — {event_name}")
+    lines.append("=" * 76)
+    lines.append(f"  Generated : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append(f"  Notes     : {ref['notes']}")
+    lines.append("")
+    lines.append("  Reference event parameters:")
+    lines.append(f"    Rainfall : {ref['rainfall_mm']} mm")
+    lines.append(f"    Duration : {ref['duration_h']} h")
+    lines.append(f"    Pattern  : {ref['pattern']}")
+    lines.append("")
+    lines.append("  Observed (from reports / photos):")
+    lines.append(f"    Peak flooded % : "
+                 f"{ref['observed_flooded_pct'] if ref['observed_flooded_pct'] is not None else 'NOT YET RECORDED'}")
+    lines.append(f"    Peak depth mm  : "
+                 f"{ref['observed_max_depth_mm'] if ref['observed_max_depth_mm'] is not None else 'NOT YET RECORDED'}")
+    lines.append("")
+    lines.append("  Simulated:")
+    lines.append(f"    Peak flooded % : {simulated_peak_flooded_pct:.2f}")
+    lines.append(f"    Peak depth mm  : {simulated_peak_depth_mm:.1f}")
+    lines.append("")
+    if errors:
+        lines.append("  Absolute errors:")
+        for k, v in errors.items():
+            lines.append(f"    {k:<30s}: {v}")
+    lines.append("")
+    lines.append(f"  Agreement rating: {rating}")
+    lines.append("=" * 76)
+
+    txt_content = "\n".join(lines)
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write(txt_content)
+    print()
+    print(txt_content)
+    print(f"\n  Validation report saved: {txt_path}")
+    return {"event": event_name, "errors": errors, "rating": rating}
+
+
+# =============================================================================
 # MAIN SIMULATION RUNNER
 # =============================================================================
 # Accepts prevention flags (use_floodwall, use_canal) and dimension parameters
@@ -1132,6 +1497,18 @@ def run_simulation(dem: np.ndarray, cellsize: float,
             base_stats["max_depth_mm"].append(float(total_b.max() * 1000))
     else:
         base_stats = None
+
+    # ── Quantitative results table ────────────────────────────────────────────
+    compute_quantitative_results(
+        scenario_name=scenario_name,
+        rainfall_mm=rainfall_mm,
+        stats=stats,
+        base_stats=base_stats,
+        prevention_str=prevention_str,
+        num_frames=num_frames,
+        timestep_min=timestep_min,
+        out_dir=DATA_OUT,
+    )
 
     # ── Build infrastructure overlay arrays (for drawing on the map) ─────────
     H, W = dem.shape
