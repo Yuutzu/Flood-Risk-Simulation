@@ -1,20 +1,20 @@
 ============================================================================
   QUANTITATIVE RESULTS — JADE VALLEY FLOOD SIMULATION
 ============================================================================
-  Generated  : 2026-05-07 11:00:37
+  Generated  : 2026-05-07 13:47:37
   Scenario   : Heavy Rain
   Rainfall   : 90 mm over 240 min
-  Prevention : Floodwall +2.0m
+  Prevention : Floodwall +2.0m + Drainage Canal + Retention Basin 6.0m + Elevated Road +1.5m
 
 ----------------------------------------------------------------------------
   Peak flood metrics  (run with prevention applied)
 ----------------------------------------------------------------------------
-  Peak flood extent       :   116.89 ha   (35.81 %)
-  Peak maximum depth      :   1554.8 mm
-  Peak river overflow     :    30.77 %
+  Peak flood extent       :   105.81 ha   (32.41 %)
+  Peak maximum depth      :   1683.0 mm
+  Peak river overflow     :    28.27 %
   Time to peak extent     :      230 min
   Time to peak depth      :      230 min
-  Flood exposure integral :   207.63 ha-hours
+  Flood exposure integral :   174.49 ha-hours
 
 ----------------------------------------------------------------------------
   Baseline metrics  (same scenario, no prevention)
@@ -27,10 +27,10 @@
 ----------------------------------------------------------------------------
   Improvement from prevention measures
 ----------------------------------------------------------------------------
-  Extent reduction        :     9.01 ha   (+7.2 % relative)
-  Depth reduction         :     -0.7 mm  (-0.0 % relative)
+  Extent reduction        :    20.09 ha   (+16.0 % relative)
+  Depth reduction         :   -129.0 mm  (-8.3 % relative)
   Time-to-peak shift      :       +0 min  (positive = peak delayed)
-  Exposure reduction      :    22.74 ha-hours
+  Exposure reduction      :    55.88 ha-hours
 
 ============================================================================
   Files written:

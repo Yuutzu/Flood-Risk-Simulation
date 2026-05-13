@@ -1280,6 +1280,21 @@ def run_sensitivity_analysis(parameter, values, base_kwargs, out_dir,
 # C.  VALIDATION HOOK — Compare to a reference event
 # -----------------------------------------------------------------------------
 REFERENCE_EVENTS = {
+    "Typhoon Vinta 2017": {
+        "rainfall_mm": 217,            # Tagum City, Davao del Norte: 217.0 mm / 3-day
+                                       # (PAGASA ARTC 2017, Table 3.2.1 — closest gauge
+                                       #  to Davao City; no Davao City gauge in report)
+        "duration_h": 12.0,            # Landfall 1:45 AM Dec 22 at Cateel, Davao Oriental;
+                                       # weakened to TD early afternoon Dec 22 (~12 h over land)
+        "pattern": "burst",            # confirmed — rapid weakening after landfall over terrain
+        "observed_flooded_pct": None,  # fill in from NDRRMC / barangay reports if available
+        "observed_max_depth_mm": None, # fill in if depth estimate available
+        "notes": "Typhoon Tembin/Vinta. Landfall Cateel, Davao Oriental 1:45 AM Dec 22 2017. "
+                 "Intensity at landfall: 90 km/h, 987 hPa (Severe Tropical Storm). "
+                 "Duration over Mindanao ~12 h. Davao City peak gust only 18 km/h (not directly hit). "
+                 "Rainfall from Tagum City (closest gauge, Davao del Norte): 217 mm / 3 days. "
+                 "Source: PAGASA Annual Report on Philippine Tropical Cyclones 2017, Table 3.2.1.",
+    },
     "Typhoon Pablo 2012": {
         "rainfall_mm": 192,
         "duration_h": 18.0,
