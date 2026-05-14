@@ -48,6 +48,15 @@ from matplotlib.widgets import Button, Slider
 
 warnings.filterwarnings("ignore")
 
+# Windows consoles default to cp1252 and crash on print() with characters like
+# ≈ ≤ → that appear in this module's progress messages. Reconfigure stdout
+# and stderr to UTF-8 once at import time so every print works on every host.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+except Exception:
+    pass
+
 # ── Optional libraries ────────────────────────────────────────────────────────
 try:
     import rasterio
@@ -351,10 +360,14 @@ def apply_drainage_canal(dem: np.ndarray, cellsize: float,
                 canal_mask[r, c] = True
 
     # ── Canal B: south branch  (runs downward from canal A row) ──────────
-    # Locate the column of highest flow accumulation in the lower half
-    lower_half    = dem[rows // 2:, :]
-    peak_col      = int(np.unravel_index(np.argmax(lower_half), lower_half.shape)[1])
-    canal_b_col   = peak_col
+    # Pick the column with the lowest mean elevation in the lower half — that
+    # is where surface water naturally drains, so it is the correct outlet
+    # for the south branch. The previous code took argmax of elevation, which
+    # placed Canal B on the highest hill in the lower half (a clear bug).
+    lower_half  = dem[rows // 2:, :]
+    col_means   = lower_half.mean(axis=0)
+    peak_col    = int(np.argmin(col_means))
+    canal_b_col = peak_col
     cb_row_start  = canal_a_row
     for c in range(max(0, canal_b_col - canal_width_cells // 2),
                    min(cols, canal_b_col + canal_width_cells // 2 + 1)):

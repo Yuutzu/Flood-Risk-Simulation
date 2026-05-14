@@ -1,0 +1,34 @@
+JADE VALLEY — Prevention min/max sweep, 6 scenarios, no wind, soil 30%, drain 5 mm/hr, dt=20 min
+
+Scenario         Config    Wall  Canal  Basin  Road    Flood %  Flood ha  MaxDep mm    Overflow
+------------------------------------------------------------------------------------------------------------
+
+# Light Rain: 15 mm / 2.0 h / uniform
+  Baseline     —      —      —     —       0.00      0.00          0           —
+  Min       1.0m   1.0m   3.0m  0.5m       0.00      0.00          0           —
+  Max       3.0m   4.0m  10.0m  3.0m       0.00      0.00          0           —
+
+# Moderate Rain: 36 mm / 3.0 h / progressive
+  Baseline     —      —      —     —      21.43     68.67        214     160 min
+  Min       1.0m   1.0m   3.0m  0.5m      14.84     47.56        217     160 min
+  Max       3.0m   4.0m  10.0m  3.0m      13.69     43.87        219     160 min
+
+# Heavy Rain: 90 mm / 4.0 h / progressive
+  Baseline     —      —      —     —      39.09    125.26       1345     120 min
+  Min       1.0m   1.0m   3.0m  0.5m      32.33    103.60       1441     120 min
+  Max       3.0m   4.0m  10.0m  3.0m      31.55    101.11       1477     120 min
+
+# Typhoon Sig 1: 150 mm / 8.0 h / progressive
+  Baseline     —      —      —     —      44.92    143.97       3002     160 min
+  Min       1.0m   1.0m   3.0m  0.5m      40.84    130.89       3248     160 min
+  Max       3.0m   4.0m  10.0m  3.0m      40.41    129.50       3321     160 min
+
+# Typhoon Sig 2: 250 mm / 12.0 h / burst
+  Baseline     —      —      —     —      49.70    159.27       3315     180 min
+  Min       1.0m   1.0m   3.0m  0.5m      45.56    146.00       3686     180 min
+  Max       3.0m   4.0m  10.0m  3.0m      43.77    140.29       3744     180 min
+
+# Typhoon Sig 3: 400 mm / 18.0 h / burst
+  Baseline     —      —      —     —      56.46    180.94       3565     200 min
+  Min       1.0m   1.0m   3.0m  0.5m      52.63    168.68       3893     200 min
+  Max       3.0m   4.0m  10.0m  3.0m      50.73    162.59       4075     200 min

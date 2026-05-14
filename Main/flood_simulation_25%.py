@@ -37,6 +37,15 @@ from matplotlib.widgets import Button, Slider
 
 warnings.filterwarnings("ignore")
 
+# Windows consoles default to cp1252 and crash on print() with characters like
+# ≈ → that appear in this module's progress messages. Reconfigure stdout and
+# stderr to UTF-8 once at import time so every print works on every host.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+except Exception:
+    pass
+
 # ── Optional libraries ───────────────────────────────────────────────────────
 try:
     import rasterio

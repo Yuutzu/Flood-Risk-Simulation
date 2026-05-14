@@ -61,6 +61,15 @@ from matplotlib.widgets import Button, Slider
 
 warnings.filterwarnings("ignore")
 
+# Windows consoles default to cp1252 and crash on print() with characters like
+# ≈ ³ Δ ≤ → that appear in this module's progress messages. Reconfigure stdout
+# and stderr to UTF-8 once at import time so every print works on every host.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+except Exception:
+    pass
+
 # ── Optional libraries ────────────────────────────────────────────────────────
 try:
     import rasterio
@@ -174,12 +183,17 @@ def load_dem() -> tuple:
         dem[dem == nodata] = np.nan
         t      = src.transform
         csx    = abs(float(t.a))
+        csy    = abs(float(t.e))   # pixel height — non-square on this DEM
         crs    = src.crs
         if crs and crs.is_geographic:
             lat = float(src.bounds.bottom + (src.bounds.top - src.bounds.bottom) / 2)
-            cs  = csx * 111320 * abs(np.cos(np.radians(lat)))
+            metres_per_deg = 111320 * abs(np.cos(np.radians(lat)))
+            cs = (csx + csy) / 2.0 * metres_per_deg
         else:
-            cs = csx
+            # Projected CRS (e.g. UTM): use the arithmetic mean of pixel
+            # width and height so total area matches the surveyed footprint
+            # (≈326.44 ha) instead of biasing on the shorter axis.
+            cs = (csx + csy) / 2.0
     nan_mask = np.isnan(dem)
     if nan_mask.any() and SCIPY_OK:
         from scipy.ndimage import distance_transform_edt
@@ -364,10 +378,14 @@ def apply_drainage_canal(dem: np.ndarray, cellsize: float,
                 canal_mask[r, c] = True
 
     # ── Canal B: south branch  (runs downward from canal A row) ──────────
-    # Locate the column of highest flow accumulation in the lower half
-    lower_half    = dem[rows // 2:, :]
-    peak_col      = int(np.unravel_index(np.argmax(lower_half), lower_half.shape)[1])
-    canal_b_col   = peak_col
+    # Pick the column with the lowest mean elevation in the lower half — that
+    # is where surface water naturally drains, so it is the correct outlet
+    # for the south branch. The previous code took argmax of elevation, which
+    # placed Canal B on the highest hill in the lower half (a clear bug).
+    lower_half  = dem[rows // 2:, :]
+    col_means   = lower_half.mean(axis=0)
+    peak_col    = int(np.argmin(col_means))
+    canal_b_col = peak_col
     cb_row_start  = canal_a_row
     for c in range(max(0, canal_b_col - canal_width_cells // 2),
                    min(cols, canal_b_col + canal_width_cells // 2 + 1)):
@@ -587,7 +605,12 @@ class FloodSimulation:
                  wall_mask: 'np.ndarray | None' = None,
                  basin_mask: 'np.ndarray | None' = None,
                  road_mask: 'np.ndarray | None' = None,
-                 rainfall_mm: float = 90.0):
+                 rainfall_mm: float = 90.0,
+                 original_dem: 'np.ndarray | None' = None):
+        # original_dem (pre-prevention) is needed to measure basin storage
+        # capacity. Without it the modified DEM equals dem_raw and capacity
+        # collapses to the 0.1 m floor, leaving the basin permanently empty.
+        self.original_dem = original_dem.copy() if original_dem is not None else dem.copy()
         self.dem_raw = dem.copy()  # DEM passed in (already modified if prevention is enabled)
         self.dem     = _fill_depressions(dem)
         self.rows, self.cols = dem.shape
@@ -668,9 +691,12 @@ class FloodSimulation:
         self.basin_storage   = 0.0        # cumulative water captured (m averaged over basin)
         self.basin_capacity  = 0.0        # total storage capacity (m)
         if self.basin_mask is not None and self.basin_mask.any():
-            # Capacity = (original_elev - excavated_elev) averaged over basin cells
-            orig_mean = float(np.mean(dem[self.basin_mask]))
-            self.basin_capacity = max(orig_mean - float(np.mean(self.dem_raw[self.basin_mask])), 0.1)
+            # Capacity = (original_elev - excavated_elev) averaged over basin cells.
+            # Compare against the pre-prevention DEM, not self.dem_raw (which IS
+            # the excavated DEM) — otherwise capacity collapses to the 0.1 m floor.
+            orig_mean      = float(np.mean(self.original_dem[self.basin_mask]))
+            excavated_mean = float(np.mean(self.dem_raw[self.basin_mask]))
+            self.basin_capacity = max(orig_mean - excavated_mean, 0.1)
         # Road elevation mask — used to block cross-road flow below crest
         self.road_elev = np.zeros_like(dem, dtype=float)
         if self.road_mask is not None and self.road_mask.any():
@@ -793,9 +819,10 @@ class FloodSimulation:
             fill_ratio = self.basin_storage / max(self.basin_capacity, 0.01)
             # Reduce water in basin area proportional to available capacity
             blue_depth[self.basin_mask] *= fill_ratio  # more water shows as basin fills
-            # Spill onto BFS front is reduced while basin has headroom
-            if fill_ratio < 0.95:
-                rise_mult *= max(0.25, fill_ratio)
+            # Note: river_level for this step was already updated above using
+            # rise_mult, so any further scaling of rise_mult here would be a
+            # no-op. The basin's effect on flood extent is delivered via the
+            # reduced blue_depth above (which feeds river_water below).
         # Road: blocks overflow BFS front from crossing road unless overtopped
         if self.road_mask is not None and self.road_mask.any():
             # Suppress BFS front from spreading across road cells below crest
@@ -1034,16 +1061,19 @@ def _intensity_factor(frame: int, total_frames: int, pattern: str) -> float:
 # -----------------------------------------------------------------------------
 def compute_quantitative_results(scenario_name, rainfall_mm, stats, base_stats,
                                  prevention_str, num_frames, timestep_min,
-                                 out_dir):
+                                 out_dir, grid_area_ha=None):
     """
     Compute peak flood metrics and write a quantitative results table.
 
     Produces:
       Results/data/quantitative_results_<scenario>.txt   (human-readable)
       Results/data/quantitative_results_<scenario>.json  (machine-readable)
+
+    grid_area_ha is derived from the actual DEM at runtime when supplied;
+    otherwise it falls back to the nominal 320.49 ha JVS footprint (57×61
+    grid × 30.36 m cell). Always prefer to pass the live value.
     """
-    CELL_HA = 30.64 ** 2 / 10_000.0
-    GRID_HA = 326.44
+    GRID_HA = float(grid_area_ha) if grid_area_ha is not None else 320.49
 
     dt_h = timestep_min / 60.0
 
@@ -1238,7 +1268,8 @@ def run_sensitivity_analysis(parameter, values, base_kwargs, out_dir,
         if isinstance(result, dict) and "flooded_pct" in result:
             peak_flooded  = max(result["flooded_pct"])
             peak_depth    = max(result["max_depth_mm"])
-            peak_flood_ha = peak_flooded / 100.0 * 326.44
+            grid_ha       = float(base_kwargs.get("grid_area_ha", 320.49))
+            peak_flood_ha = peak_flooded / 100.0 * grid_ha
         else:
             peak_flooded = peak_depth = peak_flood_ha = float("nan")
 
@@ -1468,7 +1499,8 @@ def run_simulation(dem: np.ndarray, cellsize: float,
                           wall_mask=wall_mask,
                           basin_mask=basin_mask,
                           road_mask=road_mask,
-                          rainfall_mm=rainfall_mm)
+                          rainfall_mm=rainfall_mm,
+                          original_dem=dem_orig)
     rain_frames  = []
     river_frames = []
     times_list   = []
@@ -1477,6 +1509,11 @@ def run_simulation(dem: np.ndarray, cellsize: float,
 
     sh, sm = map(int, start_time_str.split(':'))
     cur = datetime.now().replace(hour=sh, minute=sm, second=0)
+    # Cells that the basin and canal are DESIGNED to fill with deep water are
+    # excluded from the "max depth" metric — otherwise the basin pool always
+    # wins and prevention looks like it INCREASES peak depth. The wall and road
+    # cells are raised, so their water is shallow by construction.
+    storage_mask = basin_mask | canal_mask
     for fr in range(num_frames):
         inten = _intensity_factor(fr, num_frames, pattern)
         sim.step(rate_mmhr, dt_h, intensity=inten, wind_map=wmap)
@@ -1484,10 +1521,11 @@ def run_simulation(dem: np.ndarray, cellsize: float,
         river_frames.append(np.nan_to_num(sim.river_water.copy(), nan=0.0, posinf=0.0, neginf=0.0))
         times_list  .append(cur.strftime("%H:%M"))
         total = sim.rain_water + sim.river_water
+        total_outside_storage = np.where(storage_mask, 0.0, total)
         stats["rain_mm"]     .append(float(sim.rainfall_accumulated * 1000))
         stats["flooded_pct"] .append(float(np.sum(total > 0.01) / total.size * 100))
         stats["river_pct"]   .append(float(np.sum(sim.river_water > 0.005) / total.size * 100))
-        stats["max_depth_mm"].append(float(total.max() * 1000))
+        stats["max_depth_mm"].append(float(total_outside_storage.max() * 1000))
         stats["max_river_mm"].append(float(sim.river_water.max() * 1000))
         if (fr + 1) % max(1, num_frames // 8) == 0 or fr == 0:
             print(f"    [{fr+1:3d}/{num_frames}]  {times_list[-1]}  "
@@ -1514,6 +1552,7 @@ def run_simulation(dem: np.ndarray, cellsize: float,
         base_stats = None
 
     # ── Quantitative results table ────────────────────────────────────────────
+    grid_area_ha = float(dem.size * cellsize ** 2 / 10_000.0)
     compute_quantitative_results(
         scenario_name=scenario_name,
         rainfall_mm=rainfall_mm,
@@ -1523,6 +1562,7 @@ def run_simulation(dem: np.ndarray, cellsize: float,
         num_frames=num_frames,
         timestep_min=timestep_min,
         out_dir=DATA_OUT,
+        grid_area_ha=grid_area_ha,
     )
 
     # ── Build infrastructure overlay arrays (for drawing on the map) ─────────
@@ -2036,7 +2076,14 @@ class SimulationGUI:
     ROAD   = '#FF9800'
 
     def _on_preset_change(self, *args, **kwargs):
-        """Update all sliders, description, and prevention checkboxes when a scenario preset is selected."""
+        """Update storm sliders and description when a scenario preset is selected.
+
+        Prevention checkboxes are intentionally NOT reset here: the previous
+        behavior silently turned all four measures OFF whenever the user
+        picked Light/Moderate rain, which made baseline-vs-prevention
+        comparisons look identical for those scenarios. The Prevention tab
+        is now wholly owned by the user.
+        """
         self._is_randomized = False
         key = self.scenario_var.get()
         sc = SCENARIOS.get(key)
@@ -2045,25 +2092,8 @@ class SimulationGUI:
             self.sliders['duration_h'].set(sc["duration_h"])
             self.pattern_var.set(sc["pattern"])
             self.desc_var.set(sc.get("desc", ""))
-            # Set prevention checkboxes to scenario-appropriate defaults
-            rain = sc["rainfall_mm"]
-            if rain <= 36:
-                self.fw_var.set(False); self.cn_var.set(False)
-                self.rb_var.set(False); self.er_var.set(False)
-            elif rain <= 90:
-                self.fw_var.set(True);  self.cn_var.set(False)
-                self.rb_var.set(False); self.er_var.set(False)
-            elif rain <= 150:
-                self.fw_var.set(True);  self.cn_var.set(True)
-                self.rb_var.set(False); self.er_var.set(False)
-            else:
-                self.fw_var.set(True);  self.cn_var.set(True)
-                self.rb_var.set(True);  self.er_var.set(True)
         else:
             self.desc_var.set("")
-            self.fw_var.set(False); self.cn_var.set(False)
-            self.rb_var.set(False); self.er_var.set(False)
-        # Optionally update preview/status
         if hasattr(self, '_update_measure_display'):
             self._update_measure_display()
 

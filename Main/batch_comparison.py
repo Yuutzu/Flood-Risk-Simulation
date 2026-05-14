@@ -18,6 +18,14 @@ import numpy as np
 
 warnings.filterwarnings("ignore")
 
+# Reconfigure to UTF-8 so Δ / × characters in the printed table do not crash
+# the default Windows cp1252 console.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+except Exception:
+    pass
+
 # ── Load the main simulation module ──────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
 SIM_FILE = BASE_DIR / "Main" / "flood_simulation_75%.py"
@@ -35,7 +43,7 @@ wind_rainfall_map         = mod.wind_rainfall_map
 # ── Load DEM once ─────────────────────────────────────────────────────────────
 print("Loading DEM…")
 dem, cellsize = load_dem()
-TOTAL_AREA_HA = 326.44
+TOTAL_AREA_HA = float(dem.size * cellsize ** 2 / 10_000.0)
 
 # ── Scenarios ─────────────────────────────────────────────────────────────────
 SCENARIOS = [
@@ -94,6 +102,7 @@ def run_one(dem, cellsize, rainfall_mm, duration_h, pattern,
         basin_mask  = basin_mask,
         road_mask   = road_mask,
         rainfall_mm = rainfall_mm,
+        original_dem = dem,
     )
 
     peak_flooded_pct  = 0.0

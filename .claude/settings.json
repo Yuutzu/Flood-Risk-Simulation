@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l \"c:/Users/lacro/OneDrive/Desktop/Final Project \\(Simulation\\)/Main/flood_simulation_75%.py\" \"c:/Users/lacro/OneDrive/Desktop/Final Project \\(Simulation\\)/Main/flood_simulation_50%.py\" \"c:/Users/lacro/OneDrive/Desktop/Final Project \\(Simulation\\)/Main/flood_simulation_25%.py\" \"c:/Users/lacro/OneDrive/Desktop/Final Project \\(Simulation\\)/Main/batch_comparison.py\" \"c:/Users/lacro/OneDrive/Desktop/Final Project \\(Simulation\\)/Main/run_validation.py\" \"c:/Users/lacro/OneDrive/Desktop/Final Project \\(Simulation\\)/Main/requirements.txt\")",
+      "Read(//c/Users/lacro/OneDrive/Desktop/Final Project \\(Simulation\\)/Main/**)",
+      "Bash(ls \"C:/Users/lacro/.claude/projects/c--Users-lacro-OneDrive-Desktop-Final-Project--Simulation-/memory/\" 2>&1)",
+      "Read(//c/Users/lacro/.claude/projects/c--Users-lacro-OneDrive-Desktop-Final-Project--Simulation-/memory/**)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('Main/flood_simulation_75%.py', encoding='utf-8'\\).read\\(\\)\\); print\\('75% syntax OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('Main/flood_simulation_50%.py', encoding='utf-8'\\).read\\(\\)\\); print\\('50% OK'\\); ast.parse\\(open\\('Main/flood_simulation_25%.py', encoding='utf-8'\\).read\\(\\)\\); print\\('25% OK'\\); ast.parse\\(open\\('Main/batch_comparison.py', encoding='utf-8'\\).read\\(\\)\\); print\\('batch OK'\\); ast.parse\\(open\\('Main/run_validation.py', encoding='utf-8'\\).read\\(\\)\\); print\\('val OK'\\)\")",
+      "Bash(python -c ' *)",
+      "Bash(python -c \"import pptx; print\\('python-pptx version:', pptx.__version__\\)\")"
+    ]
+  }
+}
