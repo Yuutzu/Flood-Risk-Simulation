@@ -6,6 +6,12 @@ Runs all 6 rainfall scenarios × 4 prevention configurations
 (Baseline / Small / Medium / Large prevention measures)
 and prints peak flood statistics for the comparison tables.
 
+This script REQUIRES flood_simulation_75%.py — it relies on the 5-tuple
+return of apply_prevention_measures() (modified_dem, wall_mask, canal_mask,
+basin_mask, road_mask) and the 75%-only FloodSimulation kwargs
+(basin_mask, road_mask, original_dem). It will NOT work with the 25% or
+50% builds. For the master 24-cell matrix run, use flood_simulation_100%.py.
+
 Usage:
     python Main/batch_comparison.py
 """

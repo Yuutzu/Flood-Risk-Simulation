@@ -4,28 +4,28 @@
   "duration_min": 240,
   "prevention": "Floodwall +2.0m + Drainage Canal + Retention Basin 6.0m + Elevated Road +1.5m",
   "prevention_run": {
-    "peak_flooded_pct": 32.41,
-    "peak_flooded_ha": 105.81,
-    "peak_max_depth_mm": 1683.0,
-    "peak_river_overflow_pct": 28.27,
+    "peak_flooded_pct": 35.03,
+    "peak_flooded_ha": 114.35,
+    "peak_max_depth_mm": 1719.0,
+    "peak_river_overflow_pct": 30.2,
     "time_to_peak_flood_min": 230,
     "time_to_peak_depth_min": 230,
-    "flood_exposure_ha_hours": 174.49
+    "flood_exposure_ha_hours": 192.32
   },
   "baseline_run": {
     "peak_flooded_pct": 38.57,
-    "peak_flooded_ha": 125.9,
+    "peak_flooded_ha": 125.89,
     "peak_max_depth_mm": 1554.0,
     "time_to_peak_flood_min": 230,
-    "flood_exposure_ha_hours": 230.36
+    "flood_exposure_ha_hours": 230.35
   },
   "improvement": {
-    "extent_reduction_ha": 20.09,
-    "extent_reduction_pct": 6.15,
-    "extent_reduction_rel_pct": 16.0,
-    "depth_reduction_mm": -129.0,
-    "depth_reduction_rel_pct": -8.3,
+    "extent_reduction_ha": 11.55,
+    "extent_reduction_pct": 3.54,
+    "extent_reduction_rel_pct": 9.2,
+    "depth_reduction_mm": -165.0,
+    "depth_reduction_rel_pct": -10.6,
     "time_to_peak_shift_min": 0,
-    "exposure_reduction_ha_hours": 55.88
+    "exposure_reduction_ha_hours": 38.04
   }
 }

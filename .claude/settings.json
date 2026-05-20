@@ -8,7 +8,25 @@
       "Bash(python -c \"import ast; ast.parse\\(open\\('Main/flood_simulation_75%.py', encoding='utf-8'\\).read\\(\\)\\); print\\('75% syntax OK'\\)\")",
       "Bash(python -c \"import ast; ast.parse\\(open\\('Main/flood_simulation_50%.py', encoding='utf-8'\\).read\\(\\)\\); print\\('50% OK'\\); ast.parse\\(open\\('Main/flood_simulation_25%.py', encoding='utf-8'\\).read\\(\\)\\); print\\('25% OK'\\); ast.parse\\(open\\('Main/batch_comparison.py', encoding='utf-8'\\).read\\(\\)\\); print\\('batch OK'\\); ast.parse\\(open\\('Main/run_validation.py', encoding='utf-8'\\).read\\(\\)\\); print\\('val OK'\\)\")",
       "Bash(python -c ' *)",
-      "Bash(python -c \"import pptx; print\\('python-pptx version:', pptx.__version__\\)\")"
+      "Bash(python -c \"import pptx; print\\('python-pptx version:', pptx.__version__\\)\")",
+      "Bash(wc -l \"c:/Users/lacro/OneDrive/Desktop/Final Project \\(Simulation\\)/Main/flood_simulation_25%.py\" \"c:/Users/lacro/OneDrive/Desktop/Final Project \\(Simulation\\)/Main/flood_simulation_50%.py\" \"c:/Users/lacro/OneDrive/Desktop/Final Project \\(Simulation\\)/Main/flood_simulation_75%.py\" \"c:/Users/lacro/OneDrive/Desktop/Final Project \\(Simulation\\)/Main/batch_comparison.py\" \"c:/Users/lacro/OneDrive/Desktop/Final Project \\(Simulation\\)/Main/run_validation.py\")",
+      "Bash(python -c \"import numpy, scipy, matplotlib, rasterio, PIL, ezdxf; print\\('core OK'\\)\")",
+      "Bash(python -c \"import pptx; print\\('pptx', pptx.__version__\\)\")",
+      "Bash(python -c \"import docx; print\\('docx', docx.__version__\\)\")",
+      "Bash(grep -n \"if __name__ == \\\\\"__main__\\\\\"\" \"c:/Users/lacro/OneDrive/Desktop/Final Project \\(Simulation\\)/Main/flood_simulation_25%.py\" \"c:/Users/lacro/OneDrive/Desktop/Final Project \\(Simulation\\)/Main/flood_simulation_50%.py\" \"c:/Users/lacro/OneDrive/Desktop/Final Project \\(Simulation\\)/Main/flood_simulation_75%.py\")",
+      "Bash(python Main/hand_risk_analysis.py)",
+      "Bash(git checkout *)",
+      "Bash(python Main/run_validation.py)",
+      "Bash(python -m py_compile Main/run_validation.py)",
+      "Bash(python -m py_compile \"Main/flood_simulation_100%.py\")",
+      "Bash(python \"Main/flood_simulation_100%.py\" --quick --no-hand --dt 30)",
+      "Bash(python \"Main/flood_simulation_100%.py\" --dt 20)",
+      "Bash(python \"Documents/_build_ppt.py\")",
+      "Bash(pip install *)",
+      "Bash(python \"Documents/_build_docx.py\")",
+      "Bash(python \"Main/flood_simulation_100%.py\" --matrix-only --quick --no-hand)",
+      "Bash(python \"Main/flood_simulation_100%.py\" --matrix-only --no-hand)",
+      "Bash(cd \"c:/Users/lacro/OneDrive/Desktop/Final Project \\(Simulation\\)\" && ls -la Documents/Jade_Valley_Flood_Simulation_FINAL.pptx Documents/USER_GUIDE.md Documents/User_Guide.docx Main/flood_simulation_100%.py Main/hand_risk_analysis.py Results/data/master_results_table.csv Results/data/master_reduction_table.txt 2>&1)"
     ]
   }
 }

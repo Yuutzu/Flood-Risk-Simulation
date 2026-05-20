@@ -21,15 +21,30 @@ import importlib.util
 from pathlib import Path
 
 # ── Load the simulation module (handles the % in the filename) ───────────────
+# NOTE: this script intentionally targets flood_simulation_75%.py — it is the
+# only build that defines validate_against_event() and REFERENCE_EVENTS.
 _root = Path(__file__).resolve().parent.parent
-_spec = importlib.util.spec_from_file_location(
-    "sim75", _root / "Main" / "flood_simulation_75%.py"
-)
-_sim = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_sim)
+_sim_path = _root / "Main" / "flood_simulation_75%.py"
+if not _sim_path.exists():
+    raise SystemExit(f"\n[ERROR] Required file not found: {_sim_path}\n"
+                     "  run_validation.py only works with flood_simulation_75%.py.")
 
-validate_against_event = _sim.validate_against_event
-DATA_OUT               = _sim.DATA_OUT
+_spec = importlib.util.spec_from_file_location("sim75", _sim_path)
+if _spec is None or _spec.loader is None:
+    raise SystemExit(f"\n[ERROR] Could not build import spec for {_sim_path}.")
+_sim = importlib.util.module_from_spec(_spec)
+try:
+    _spec.loader.exec_module(_sim)
+except Exception as e:
+    raise SystemExit(f"\n[ERROR] Failed to load flood_simulation_75%.py: {e}")
+
+try:
+    validate_against_event = _sim.validate_against_event  # type: ignore[attr-defined]
+    DATA_OUT               = _sim.DATA_OUT                # type: ignore[attr-defined]
+except AttributeError as e:
+    raise SystemExit(f"\n[ERROR] flood_simulation_75%.py is missing required "
+                     f"symbol: {e}\n  Make sure you are running the latest "
+                     "75% build (not 25% or 50%).")
 
 # =============================================================================
 #  ↓↓  EDIT THESE TWO NUMBERS AFTER RUNNING THE SIMULATION  ↓↓

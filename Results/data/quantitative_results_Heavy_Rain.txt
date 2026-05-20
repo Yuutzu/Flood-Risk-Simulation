@@ -1,7 +1,7 @@
 ============================================================================
   QUANTITATIVE RESULTS — JADE VALLEY FLOOD SIMULATION
 ============================================================================
-  Generated  : 2026-05-07 13:47:37
+  Generated  : 2026-05-20 12:09:49
   Scenario   : Heavy Rain
   Rainfall   : 90 mm over 240 min
   Prevention : Floodwall +2.0m + Drainage Canal + Retention Basin 6.0m + Elevated Road +1.5m
@@ -9,28 +9,28 @@
 ----------------------------------------------------------------------------
   Peak flood metrics  (run with prevention applied)
 ----------------------------------------------------------------------------
-  Peak flood extent       :   105.81 ha   (32.41 %)
-  Peak maximum depth      :   1683.0 mm
-  Peak river overflow     :    28.27 %
+  Peak flood extent       :   114.35 ha   (35.03 %)
+  Peak maximum depth      :   1719.0 mm
+  Peak river overflow     :    30.20 %
   Time to peak extent     :      230 min
   Time to peak depth      :      230 min
-  Flood exposure integral :   174.49 ha-hours
+  Flood exposure integral :   192.32 ha-hours
 
 ----------------------------------------------------------------------------
   Baseline metrics  (same scenario, no prevention)
 ----------------------------------------------------------------------------
-  Peak flood extent       :   125.90 ha   (38.57 %)
+  Peak flood extent       :   125.89 ha   (38.57 %)
   Peak maximum depth      :   1554.0 mm
   Time to peak extent     :      230 min
-  Flood exposure integral :   230.36 ha-hours
+  Flood exposure integral :   230.35 ha-hours
 
 ----------------------------------------------------------------------------
   Improvement from prevention measures
 ----------------------------------------------------------------------------
-  Extent reduction        :    20.09 ha   (+16.0 % relative)
-  Depth reduction         :   -129.0 mm  (-8.3 % relative)
+  Extent reduction        :    11.55 ha   (+9.2 % relative)
+  Depth reduction         :   -165.0 mm  (-10.6 % relative)
   Time-to-peak shift      :       +0 min  (positive = peak delayed)
-  Exposure reduction      :    55.88 ha-hours
+  Exposure reduction      :    38.04 ha-hours
 
 ============================================================================
   Files written:

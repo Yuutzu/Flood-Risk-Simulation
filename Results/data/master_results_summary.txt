@@ -1,0 +1,45 @@
+====================================================================================================
+  JADE VALLEY SUBDIVISION - MASTER RESULTS TABLE  (100% BUILD)
+  Davao City, Philippines
+====================================================================================================
+  Generated      : 2026-05-20 13:07:08
+  Total area     : 326.42 ha
+  Timestep       : 20 min
+  Total runs     : 24
+
+----------------------------------------------------------------------------------------------------
+  Scenario                               Config                Peak%   Peak ha  MaxDep mm  River%  Onset min
+----------------------------------------------------------------------------------------------------
+  Light Rain                             Baseline               0.00      0.00          0    0.00          -
+  Light Rain                             Wall+Canal             0.00      0.00          0    0.00          -
+  Light Rain                             Full Prevention        0.00      0.00          1    0.00          -
+  Light Rain                             Large Prevention       0.00      0.00          0    0.00          -
+
+  Moderate Rain                          Baseline              21.43     69.94        214   21.17        160
+  Moderate Rain                          Wall+Canal            16.36     53.42        217   16.19        160
+  Moderate Rain                          Full Prevention       14.15     46.19        218   13.98        160
+  Moderate Rain                          Large Prevention      12.65     41.31        217   12.74        160
+
+  Heavy Rain                             Baseline              39.09    127.58       1345   34.83        120
+  Heavy Rain                             Wall+Canal            33.68    109.93       1431   28.65        120
+  Heavy Rain                             Full Prevention       30.89    100.83       1472   25.11        120
+  Heavy Rain                             Large Prevention      28.73     93.79       1438   23.76        120
+
+  Typhoon Signal 1 (Tropical Depression) Baseline              44.92    146.64       3002   39.83        160
+  Typhoon Signal 1 (Tropical Depression) Wall+Canal            42.45    138.57       3241   36.09        160
+  Typhoon Signal 1 (Tropical Depression) Full Prevention       39.98    130.49       3259   32.70        160
+  Typhoon Signal 1 (Tropical Depression) Large Prevention      37.91    123.74       3244   31.35        160
+
+  Typhoon Signal 2 (Tropical Storm)      Baseline              49.70    162.23       3315   46.33        180
+  Typhoon Signal 2 (Tropical Storm)      Wall+Canal            47.08    153.68       3666   42.62        180
+  Typhoon Signal 2 (Tropical Storm)      Full Prevention       44.20    144.30       3738   38.22        180
+  Typhoon Signal 2 (Tropical Storm)      Large Prevention      42.19    137.72       3681   36.99        180
+
+  Typhoon Signal 3 (Severe Typhoon)      Baseline              56.46    184.29       3565   50.47        200
+  Typhoon Signal 3 (Severe Typhoon)      Wall+Canal            53.98    176.21       3859   46.88        200
+  Typhoon Signal 3 (Severe Typhoon)      Full Prevention       50.30    164.20       3953   42.34        200
+  Typhoon Signal 3 (Severe Typhoon)      Large Prevention      49.12    160.35       3879   41.04        200
+
+====================================================================================================
+  END OF MASTER RESULTS
+====================================================================================================

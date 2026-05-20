@@ -1,0 +1,32 @@
+====================================================================================================
+  JADE VALLEY SUBDIVISION - REDUCTION vs BASELINE
+====================================================================================================
+  Values are improved - baseline. Negative = reduction (good).
+
+  Scenario                               Config              d Flooded%  d Flooded ha  d Depth mm  Reduction %
+----------------------------------------------------------------------------------------------------
+  Light Rain                             Wall+Canal               +0.00         +0.00          +0        +0.0%
+  Light Rain                             Full Prevention          +0.00         +0.00          +1        +0.0%
+  Light Rain                             Large Prevention         +0.00         +0.00          +0        +0.0%
+
+  Moderate Rain                          Wall+Canal               -5.07        -16.52          +3       -23.7%
+  Moderate Rain                          Full Prevention          -7.28        -23.75          +4       -34.0%
+  Moderate Rain                          Large Prevention         -8.78        -28.63          +3       -41.0%
+
+  Heavy Rain                             Wall+Canal               -5.41        -17.65         +86       -13.8%
+  Heavy Rain                             Full Prevention          -8.20        -26.75        +127       -21.0%
+  Heavy Rain                             Large Prevention        -10.36        -33.79         +93       -26.5%
+
+  Typhoon Signal 1 (Tropical Depression) Wall+Canal               -2.47         -8.07        +239        -5.5%
+  Typhoon Signal 1 (Tropical Depression) Full Prevention          -4.94        -16.15        +257       -11.0%
+  Typhoon Signal 1 (Tropical Depression) Large Prevention         -7.01        -22.90        +242       -15.6%
+
+  Typhoon Signal 2 (Tropical Storm)      Wall+Canal               -2.62         -8.55        +351        -5.3%
+  Typhoon Signal 2 (Tropical Storm)      Full Prevention          -5.50        -17.93        +423       -11.1%
+  Typhoon Signal 2 (Tropical Storm)      Large Prevention         -7.51        -24.51        +365       -15.1%
+
+  Typhoon Signal 3 (Severe Typhoon)      Wall+Canal               -2.48         -8.08        +294        -4.4%
+  Typhoon Signal 3 (Severe Typhoon)      Full Prevention          -6.16        -20.09        +388       -10.9%
+  Typhoon Signal 3 (Severe Typhoon)      Large Prevention         -7.34        -23.94        +314       -13.0%
+
+====================================================================================================
